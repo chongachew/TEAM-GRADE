@@ -1,0 +1,90 @@
+{
+  "universal": {
+    "speed": ["speed for position", "closing speed", "long speed"],
+    "acceleration": ["initial quickness", "burst", "explosiveness"],
+    "agility": ["change of direction", "quickness", "lateral movement"],
+    "balance_body_control": ["balance", "body control", "staying square"],
+    "strength": ["play strength", "leg drive", "contact power"],
+    "instincts": ["reaction", "recognition", "instinctiveness"],
+    "competitiveness": ["intensity", "aggressiveness", "effort"],
+    "stamina": ["durability", "conditioning", "play-to-play effort"],
+    "flexibility": ["hip mobility", "range of motion"]
+  },
+
+  "wr": {
+    "release": ["avoid press", "beat collision", "initial quickness"],
+    "hands": ["catch ability", "traffic concentration", "ball skills"],
+    "route_running": ["short/medium/long routes", "suddenness", "separation"],
+    "rac": ["run after catch", "burst after reception"],
+    "body_control": ["adjustment", "sideline control"],
+    "blocking": ["perimeter blocking", "position blocking"]
+  },
+
+  "ol": {
+    "pass_protection": ["anchor", "mirror", "set depth"],
+    "run_blocking": ["leg drive", "sustainability", "latch"],
+    "hand_use": ["strike", "placement", "timing"],
+    "movement": ["pulling", "tracking", "agility"],
+    "body_control": ["balance", "recovery"],
+    "strength": ["play strength", "pop", "explosiveness"]
+  },
+
+  "qb": {
+    "arm_talent": ["arm strength", "touch short/medium/long"],
+    "accuracy": ["ball placement", "on-time throws"],
+    "mechanics": ["release", "delivery", "dropback quickness"],
+    "processing": ["anticipation", "decision making", "under duress"],
+    "mobility": ["scrambling", "throw on run", "extend plays"],
+    "pocket_management": ["poise", "awareness", "pressure response"],
+    "ball_security": ["fumbles", "risk management"]
+  },
+
+  "rb": {
+    "vision": ["read blocks", "anticipation", "cutback recognition"],
+    "burst": ["initial quickness", "acceleration"],
+    "balance": ["running balance", "after contact stability"],
+    "elusiveness": ["make-you-miss ability", "open-field moves"],
+    "power": ["tackle breaking", "short yardage strength"],
+    "versatility": ["receiving ability", "pass protection"],
+    "ball_security": ["fumbles", "technique"]
+  },
+
+  "dl": {
+    "get_off": ["initial quickness", "snap timing"],
+    "pass_rush": ["rush moves", "bend", "closing ability"],
+    "power": ["surge", "push the pocket"],
+    "hand_use": ["strike", "shed", "placement"],
+    "block_shedding": ["1v1 wins", "double team handling"],
+    "pursuit": ["angles", "effort"],
+    "tackling": ["finish", "wrap"],
+    "instincts": ["recognition", "reaction"]
+  },
+
+  "lb": {
+    "instincts": ["diagnose", "recognition", "reaction"],
+    "tackling": ["form", "finish", "range"],
+    "coverage": ["hips", "drops", "man/zone ability"],
+    "blitzing": ["timing", "rush ability"],
+    "block_shedding": ["use of hands", "stay square"],
+    "pursuit": ["angles", "effort"],
+    "toughness": ["physicality", "contact courage"]
+  },
+
+  "db": {
+    "backpedal": ["technique", "cadence"],
+    "man_coverage": ["stay square", "mirror", "hip turn"],
+    "zone_coverage": ["range", "awareness"],
+    "closing_speed": ["burst", "recovery"],
+    "ball_skills": ["hands", "tracking", "awareness"],
+    "tackling": ["open-field tackling", "finish"],
+    "confidence": ["aggressiveness", "composure"]
+  },
+
+  "meta": {
+    "play_in_space": ["open-field ability", "range", "movement efficiency"],
+    "physicality": ["contact courage", "aggressiveness"],
+    "processing_speed": ["reaction", "diagnose", "anticipation"],
+    "technical_skill": ["hand use", "footwork", "mechanics"],
+    "organization": ["alignment", "spacing", "assignment execution"]
+  }
+}
