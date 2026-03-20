@@ -1,0 +1,12 @@
+{
+  "level": "professional",
+  "bucketing": {
+    "numeric": {
+      "elite": { "min": 92, "max": 100 },
+      "high": { "min": 80, "max": 91 },
+      "average": { "min": 50, "max": 79 },
+      "below_average": { "min": 20, "max": 49 },
+      "poor": { "min": 0, "max": 19 }
+    }
+  }
+}

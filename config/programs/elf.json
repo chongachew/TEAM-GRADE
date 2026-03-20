@@ -1,0 +1,9 @@
+{
+  "program": "elf_league",
+  "scheme_type": "flag_football",
+  "adjustments": {
+    "contact_intensity_multiplier": 0.5,
+    "flag_pull_accuracy_weight": 1.5,
+    "spacing_weight": 1.3
+  }
+}

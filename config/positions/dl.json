@@ -1,0 +1,37 @@
+{
+  "position": "DL",
+  "name": "Defensive Line",
+  "features": {
+    "pass_rush": [
+      { "name": "getOffTime", "source": "tracking_data", "type": "numeric" },
+      { "name": "rushMoves", "source": "tracking_data", "type": "numeric" },
+      { "name": "closingAbility", "source": "tracking_data", "type": "numeric" }
+    ],
+    "power": [
+      { "name": "surgePower", "source": "biomechanics", "type": "numeric" },
+      { "name": "pocketPush", "source": "tracking_data", "type": "numeric" }
+    ],
+    "hand_usage": [
+      { "name": "strikeEffectiveness", "source": "biomechanics", "type": "numeric" },
+      { "name": "shedTechnique", "source": "pose_estimation", "type": "numeric" }
+    ]
+  },
+  "traits": {
+    "getOff": {
+      "features": ["getOffTime"],
+      "weights": [1.0]
+    },
+    "penetration": {
+      "features": ["surgePower", "pocketPush", "closingAbility"],
+      "weights": [0.4, 0.4, 0.2]
+    },
+    "handUsage": {
+      "features": ["strikeEffectiveness", "shedTechnique"],
+      "weights": [0.5, 0.5]
+    }
+  },
+  "weights": {
+    "pass_rush": 0.6,
+    "run_defense": 0.4
+  }
+}

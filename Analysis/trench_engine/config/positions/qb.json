@@ -1,0 +1,106 @@
+{
+  "position": "QB",
+  "name": "Quarterback",
+  "description": "Quarterback mechanics, processing, and decision-making analysis",
+  "features": {
+    "mechanics": [
+      {
+        "name": "baseWidth",
+        "source": "pose_estimation",
+        "description": "Stance width and stability",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "hipShoulderSeparation",
+        "source": "pose_estimation",
+        "description": "Hip to shoulder separation in mechanics",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "releaseTime",
+        "source": "tracking_data",
+        "description": "Time from snap to ball release",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "arm_talent": [
+      {
+        "name": "armStrength",
+        "source": "biomechanics",
+        "description": "Arm strength output",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "touchQuality",
+        "source": "tracking_data",
+        "description": "Quality of ball touch and control",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "accuracy": [
+      {
+        "name": "ballPlacement",
+        "source": "tracking_data",
+        "description": "Accuracy of ball placement to receiver",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "onTimeThrows",
+        "source": "tracking_data",
+        "description": "Consistency of on-time throws",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "processing": [
+      {
+        "name": "progressionTiming",
+        "source": "tracking_data",
+        "description": "Speed of progression through reads",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "decisionMaking",
+        "source": "video_analysis",
+        "description": "Quality of decision-making under pressure",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ]
+  },
+  "traits": {
+    "releaseMechanics": {
+      "features": ["releaseTime", "hipShoulderSeparation"],
+      "weights": [0.5, 0.5],
+      "description": "Release mechanics consistency"
+    },
+    "sequencing": {
+      "features": ["baseWidth", "hipShoulderSeparation"],
+      "weights": [0.4, 0.6],
+      "description": "Lower body to upper body sequencing"
+    },
+    "progressionTiming": {
+      "features": ["progressionTiming"],
+      "weights": [1.0],
+      "description": "Speed and consistency of reads"
+    },
+    "ballPlacement": {
+      "features": ["ballPlacement", "armStrength"],
+      "weights": [0.6, 0.4],
+      "description": "Accuracy and ball placement"
+    }
+  },
+  "weights": {
+    "mechanics": 0.3,
+    "arm_talent": 0.25,
+    "accuracy": 0.25,
+    "processing": 0.2
+  }
+}

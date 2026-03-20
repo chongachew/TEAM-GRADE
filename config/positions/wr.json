@@ -1,0 +1,39 @@
+{
+  "position": "WR",
+  "name": "Wide Receiver",
+  "features": {
+    "release": [
+      { "name": "avoidPress", "source": "tracking_data", "type": "numeric" },
+      { "name": "beatCollision", "source": "pose_estimation", "type": "numeric" },
+      { "name": "releaseQuickness", "source": "tracking_data", "type": "numeric" }
+    ],
+    "hands": [
+      { "name": "catchAbility", "source": "video_analysis", "type": "numeric" },
+      { "name": "trafficConcentration", "source": "video_analysis", "type": "numeric" },
+      { "name": "ballSkills", "source": "tracking_data", "type": "numeric" }
+    ],
+    "route_running": [
+      { "name": "stemSpeed", "source": "tracking_data", "type": "numeric" },
+      { "name": "routeSharpness", "source": "pose_estimation", "type": "numeric" },
+      { "name": "separation", "source": "tracking_data", "type": "numeric" }
+    ]
+  },
+  "traits": {
+    "release": {
+      "features": ["avoidPress", "beatCollision", "releaseQuickness"],
+      "weights": [0.3, 0.3, 0.4]
+    },
+    "hands": {
+      "features": ["catchAbility", "trafficConcentration", "ballSkills"],
+      "weights": [0.3, 0.3, 0.4]
+    },
+    "routeRunning": {
+      "features": ["stemSpeed", "routeSharpness", "separation"],
+      "weights": [0.3, 0.4, 0.3]
+    }
+  },
+  "weights": {
+    "receiving": 0.7,
+    "blocking": 0.3
+  }
+}

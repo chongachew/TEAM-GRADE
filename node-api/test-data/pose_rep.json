@@ -1,0 +1,37 @@
+{
+  "frames": [
+    {
+      "timestamp": 0.016,
+      "keypoints": {
+        "hip_left": { "x": 0.46, "y": 0.63, "z": 0.11 },
+        "hip_right": { "x": 0.54, "y": 0.62, "z": 0.10 },
+        "shoulder_left": { "x": 0.45, "y": 0.43, "z": 0.14 },
+        "shoulder_right": { "x": 0.55, "y": 0.42, "z": 0.13 },
+        "ankle_left": { "x": 0.47, "y": 0.89, "z": 0.05 },
+        "ankle_right": { "x": 0.53, "y": 0.88, "z": 0.06 }
+      }
+    },
+    {
+      "timestamp": 0.033,
+      "keypoints": {
+        "hip_left": { "x": 0.47, "y": 0.64, "z": 0.11 },
+        "hip_right": { "x": 0.53, "y": 0.63, "z": 0.10 },
+        "shoulder_left": { "x": 0.46, "y": 0.44, "z": 0.14 },
+        "shoulder_right": { "x": 0.54, "y": 0.43, "z": 0.13 },
+        "ankle_left": { "x": 0.48, "y": 0.90, "z": 0.05 },
+        "ankle_right": { "x": 0.52, "y": 0.89, "z": 0.06 }
+      }
+    },
+    {
+      "timestamp": 0.050,
+      "keypoints": {
+        "hip_left": { "x": 0.48, "y": 0.65, "z": 0.11 },
+        "hip_right": { "x": 0.52, "y": 0.64, "z": 0.10 },
+        "shoulder_left": { "x": 0.47, "y": 0.45, "z": 0.14 },
+        "shoulder_right": { "x": 0.53, "y": 0.44, "z": 0.13 },
+        "ankle_left": { "x": 0.49, "y": 0.91, "z": 0.05 },
+        "ankle_right": { "x": 0.51, "y": 0.90, "z": 0.06 }
+      }
+    }
+  ]
+}

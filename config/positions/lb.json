@@ -1,0 +1,44 @@
+{
+  "position": "LB",
+  "name": "Linebacker",
+  "features": {
+    "run_fits": [
+      { "name": "fitTiming", "source": "tracking_data", "type": "numeric" },
+      { "name": "fitAccuracy", "source": "video_analysis", "type": "numeric" }
+    ],
+    "pursuit": [
+      { "name": "pursuitRate", "source": "tracking_data", "type": "numeric" },
+      { "name": "pursuitAngle", "source": "tracking_data", "type": "numeric" }
+    ],
+    "block_shedding": [
+      { "name": "shedTechnique", "source": "pose_estimation", "type": "numeric" },
+      { "name": "handUsage", "source": "biomechanics", "type": "numeric" }
+    ],
+    "coverage": [
+      { "name": "dropDepth", "source": "tracking_data", "type": "numeric" },
+      { "name": "coverageReaction", "source": "video_analysis", "type": "numeric" }
+    ]
+  },
+  "traits": {
+    "runFits": {
+      "features": ["fitTiming", "fitAccuracy"],
+      "weights": [0.5, 0.5]
+    },
+    "pursuit": {
+      "features": ["pursuitRate", "pursuitAngle"],
+      "weights": [0.4, 0.6]
+    },
+    "blockDeconstruction": {
+      "features": ["shedTechnique", "handUsage"],
+      "weights": [0.5, 0.5]
+    },
+    "coverage": {
+      "features": ["dropDepth", "coverageReaction"],
+      "weights": [0.5, 0.5]
+    }
+  },
+  "weights": {
+    "run_defense": 0.6,
+    "coverage": 0.4
+  }
+}

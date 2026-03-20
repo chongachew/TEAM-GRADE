@@ -1,0 +1,97 @@
+{
+  "position": "LB",
+  "name": "Linebacker",
+  "description": "Linebacker run fits, pursuit, and coverage analysis",
+  "features": {
+    "run_fits": [
+      {
+        "name": "fitTiming",
+        "source": "tracking_data",
+        "description": "Timing of fit point on ball carrier",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "fitAccuracy",
+        "source": "video_analysis",
+        "description": "Accuracy of fit point to assigned gap",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "pursuit": [
+      {
+        "name": "pursuitRate",
+        "source": "tracking_data",
+        "description": "Speed of lateral pursuit to ball carrier",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "pursuitAngle",
+        "source": "tracking_data",
+        "description": "Efficiency of angle to ball carrier",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "block_shedding": [
+      {
+        "name": "shedTechnique",
+        "source": "pose_estimation",
+        "description": "Technique to shed blocks",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "handUsage",
+        "source": "biomechanics",
+        "description": "Hand usage while shedding",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "coverage": [
+      {
+        "name": "dropDepth",
+        "source": "tracking_data",
+        "description": "Consistency and efficiency of coverage drops",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "coverageReaction",
+        "source": "video_analysis",
+        "description": "Reaction time to receivers in coverage",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ]
+  },
+  "traits": {
+    "runFits": {
+      "features": ["fitTiming", "fitAccuracy"],
+      "weights": [0.5, 0.5],
+      "description": "Fit point timing and accuracy"
+    },
+    "pursuit": {
+      "features": ["pursuitRate", "pursuitAngle"],
+      "weights": [0.4, 0.6],
+      "description": "Lateral pursuit ability"
+    },
+    "blockDeconstruction": {
+      "features": ["shedTechnique", "handUsage"],
+      "weights": [0.5, 0.5],
+      "description": "Block shedding ability"
+    },
+    "coverage": {
+      "features": ["dropDepth", "coverageReaction"],
+      "weights": [0.5, 0.5],
+      "description": "Coverage ability and reaction"
+    }
+  },
+  "weights": {
+    "run_defense": 0.6,
+    "coverage": 0.4
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "position": "WR",
+  "name": "Wide Receiver",
+  "description": "Wide Receiver route running, hands, and separation analysis",
+  "features": {
+    "release": [
+      {
+        "name": "avoidPress",
+        "source": "tracking_data",
+        "description": "Ability to avoid press coverage",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "beatCollision",
+        "source": "pose_estimation",
+        "description": "Technique to beat defender collision",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "releaseQuickness",
+        "source": "tracking_data",
+        "description": "Quickness off the line",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "hands": [
+      {
+        "name": "catchAbility",
+        "source": "video_analysis",
+        "description": "Ability to catch ball in various situations",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "trafficConcentration",
+        "source": "video_analysis",
+        "description": "Ability to catch in traffic",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "ballSkills",
+        "source": "tracking_data",
+        "description": "Overall ball catching skills",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "route_running": [
+      {
+        "name": "stemSpeed",
+        "source": "tracking_data",
+        "description": "Speed to stem of route",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "routeSharpness",
+        "source": "pose_estimation",
+        "description": "Sharpness of route breaks",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "separation",
+        "source": "tracking_data",
+        "description": "Separation at target point",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ]
+  },
+  "traits": {
+    "release": {
+      "features": ["avoidPress", "beatCollision", "releaseQuickness"],
+      "weights": [0.3, 0.3, 0.4],
+      "description": "Release technique and quickness"
+    },
+    "hands": {
+      "features": ["catchAbility", "trafficConcentration", "ballSkills"],
+      "weights": [0.3, 0.3, 0.4],
+      "description": "Hands and catching ability"
+    },
+    "routeRunning": {
+      "features": ["stemSpeed", "routeSharpness", "separation"],
+      "weights": [0.3, 0.4, 0.3],
+      "description": "Route running ability"
+    }
+  },
+  "weights": {
+    "receiving": 0.7,
+    "blocking": 0.3
+  }
+}

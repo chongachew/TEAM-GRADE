@@ -1,0 +1,125 @@
+{
+  "position": "OL",
+  "name": "Offensive Line",
+  "description": "Offensive Line pass protection and run blocking analysis",
+  "features": {
+    "pass_protection": [
+      {
+        "name": "anchorStrength",
+        "source": "pose_estimation",
+        "description": "Lower body stability and positioning in pass protection",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "mirrorTechnique",
+        "source": "tracking_data",
+        "description": "Ability to mirror defender lateral movement",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "setDepth",
+        "source": "pose_estimation",
+        "description": "Distance and angle of initial set depth",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "run_blocking": [
+      {
+        "name": "legDrive",
+        "source": "biomechanics",
+        "description": "Power output during initial contact and drive phase",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "sustainability",
+        "source": "tracking_data",
+        "description": "Ability to maintain block through finish of play",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "latch",
+        "source": "pose_estimation",
+        "description": "Initial engagement and control of defender",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "hand_usage": [
+      {
+        "name": "strikeAccuracy",
+        "source": "biomechanics",
+        "description": "Precision of hand strike positioning",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "handPlacement",
+        "source": "pose_estimation",
+        "description": "Quality of hand placement on defender",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "strikeVelocity",
+        "source": "biomechanics",
+        "description": "Speed of strike engagement",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "movement": [
+      {
+        "name": "pullingRoute",
+        "source": "tracking_data",
+        "description": "Effectiveness when pulling and reaching edge",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "trackingAbility",
+        "source": "tracking_data",
+        "description": "Ability to adjust to second level defenders",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "movementAgility",
+        "source": "biomechanics",
+        "description": "Lower body agility and directional changes",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ]
+  },
+  "traits": {
+    "anchor": {
+      "features": ["anchorStrength", "legDrive", "setDepth"],
+      "weights": [0.5, 0.3, 0.2],
+      "description": "Ability to anchor and hold ground in pass protection"
+    },
+    "handPlacement": {
+      "features": ["strikeAccuracy", "handPlacement"],
+      "weights": [0.6, 0.4],
+      "description": "Quality of hand usage and placement"
+    },
+    "strikeTiming": {
+      "features": ["strikeVelocity", "strikeAccuracy"],
+      "weights": [0.5, 0.5],
+      "description": "Timing and effectiveness of hand strike"
+    },
+    "runBlocking": {
+      "features": ["legDrive", "sustainability", "latch"],
+      "weights": [0.4, 0.3, 0.3],
+      "description": "Overall run blocking effectiveness"
+    }
+  },
+  "weights": {
+    "pass_protection": 0.5,
+    "run_blocking": 0.5
+  }
+}

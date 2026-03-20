@@ -1,0 +1,104 @@
+{
+  "position": "DB",
+  "name": "Defensive Back",
+  "description": "Defensive Back coverage, transitions, and ball skills analysis",
+  "features": {
+    "backpedal": [
+      {
+        "name": "backpedaleeTechnique",
+        "source": "pose_estimation",
+        "description": "Backpedal footwork and technique",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "cadence",
+        "source": "tracking_data",
+        "description": "Consistency of backpedal cadence",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "man_coverage": [
+      {
+        "name": "staySquare",
+        "source": "pose_estimation",
+        "description": "Ability to stay square to receiver",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "mirror",
+        "source": "tracking_data",
+        "description": "Ability to mirror receiver movement",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "hipTurn",
+        "source": "pose_estimation",
+        "description": "Hip turn efficiency",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "zone_coverage": [
+      {
+        "name": "zoneRange",
+        "source": "tracking_data",
+        "description": "Effective range in zone",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "areaAwareness",
+        "source": "video_analysis",
+        "description": "Awareness of zone area",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "ball_skills": [
+      {
+        "name": "handTracking",
+        "source": "pose_estimation",
+        "description": "Hand positioning for interceptions",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "ballTracking",
+        "source": "tracking_data",
+        "description": "Ability to track ball in flight",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ]
+  },
+  "traits": {
+    "pressTechnique": {
+      "features": ["staySquare"],
+      "weights": [1.0],
+      "description": "Press coverage technique"
+    },
+    "transitions": {
+      "features": ["hipTurn", "mirror"],
+      "weights": [0.5, 0.5],
+      "description": "ability to transition and flip hips"
+    },
+    "coverage": {
+      "features": ["zoneRange", "areaAwareness", "mirror"],
+      "weights": [0.3, 0.3, 0.4],
+      "description": "Coverage ability"
+    },
+    "ballSkills": {
+      "features": ["handTracking", "ballTracking"],
+      "weights": [0.5, 0.5],
+      "description": "Ball skills and interception ability"
+    }
+  },
+  "weights": {
+    "coverage": 0.7,
+    "run_defense": 0.3
+  }
+}

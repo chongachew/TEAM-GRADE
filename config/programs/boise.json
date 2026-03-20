@@ -1,0 +1,8 @@
+{
+  "program": "boise_state",
+  "scheme_type": "spread",
+  "adjustments": {
+    "spread_speed_bonus": 1.1,
+    "ball_security_weight": 1.2
+  }
+}

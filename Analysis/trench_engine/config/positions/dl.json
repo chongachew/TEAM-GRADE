@@ -1,0 +1,104 @@
+{
+  "position": "DL",
+  "name": "Defensive Line",
+  "description": "Defensive Line pass rush and run defense analysis",
+  "features": {
+    "get_off": [
+      {
+        "name": "getOffTime",
+        "source": "tracking_data",
+        "description": "Time to first movement off the snap",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "snapTiming",
+        "source": "pose_estimation",
+        "description": "Consistency of snap recognition timing",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "pass_rush": [
+      {
+        "name": "rushMoves",
+        "source": "tracking_data",
+        "description": "Variety and effectiveness of pass rush moves",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "bend",
+        "source": "pose_estimation",
+        "description": "Ability to bend around edge",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "closingAbility",
+        "source": "tracking_data",
+        "description": "Speed closing distance to quarterback",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "power": [
+      {
+        "name": "surgePower",
+        "source": "biomechanics",
+        "description": "Power output in forward surge",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "pocketPush",
+        "source": "tracking_data",
+        "description": "Ability to push pocket and collapse interior",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "hand_usage": [
+      {
+        "name": "strikeEffectiveness",
+        "source": "biomechanics",
+        "description": "Effectiveness of hand strikes",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "shedTechnique",
+        "source": "pose_estimation",
+        "description": "Ability to shed blocks",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ]
+  },
+  "traits": {
+    "getOff": {
+      "features": ["getOffTime", "snapTiming"],
+      "weights": [0.6, 0.4],
+      "description": "Initial quickness off the snap"
+    },
+    "penetration": {
+      "features": ["surgePower", "pocketPush", "closingAbility"],
+      "weights": [0.4, 0.4, 0.2],
+      "description": "Ability to penetrate backfield"
+    },
+    "handUsage": {
+      "features": ["strikeEffectiveness", "shedTechnique"],
+      "weights": [0.5, 0.5],
+      "description": "Hand usage technique"
+    },
+    "rushEffectiveness": {
+      "features": ["rushMoves", "bend", "closingAbility"],
+      "weights": [0.3, 0.3, 0.4],
+      "description": "Overall pass rush effectiveness"
+    }
+  },
+  "weights": {
+    "pass_rush": 0.6,
+    "run_defense": 0.4
+  }
+}

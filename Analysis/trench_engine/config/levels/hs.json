@@ -1,0 +1,21 @@
+{
+  "metadata": {
+    "level": "high_school",
+    "thresholds": "HS-adjusted",
+    "description": "High school specific overrides for Trench Engine"
+  },
+  "bucketing": {
+    "numeric": {
+      "elite": { "min": 85, "max": 100 },
+      "high": { "min": 70, "max": 84 },
+      "average": { "min": 50, "max": 69 },
+      "below_average": { "min": 30, "max": 49 },
+      "poor": { "min": 0, "max": 29 }
+    }
+  },
+  "adjustments": {
+    "speed_threshold": 0.9,
+    "strength_threshold": 0.85,
+    "technique_threshold": 0.8
+  }
+}

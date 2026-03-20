@@ -1,0 +1,45 @@
+{
+  "position": "RB",
+  "name": "Running Back",
+  "features": {
+    "vision": [
+      { "name": "readBlocks", "source": "video_analysis", "type": "numeric" },
+      { "name": "anticipation", "source": "tracking_data", "type": "numeric" },
+      { "name": "cutbackRecognition", "source": "tracking_data", "type": "numeric" }
+    ],
+    "burst": [
+      { "name": "burstTime", "source": "biomechanics", "type": "numeric" },
+      { "name": "acceleration", "source": "tracking_data", "type": "numeric" }
+    ],
+    "balance": [
+      { "name": "runningBalance", "source": "pose_estimation", "type": "numeric" },
+      { "name": "afterContactStability", "source": "biomechanics", "type": "numeric" }
+    ],
+    "elusiveness": [
+      { "name": "makeYouMiss", "source": "tracking_data", "type": "numeric" },
+      { "name": "openFieldMoves", "source": "tracking_data", "type": "numeric" }
+    ]
+  },
+  "traits": {
+    "burst": {
+      "features": ["burstTime", "acceleration"],
+      "weights": [0.4, 0.6]
+    },
+    "vision": {
+      "features": ["readBlocks", "anticipation", "cutbackRecognition"],
+      "weights": [0.3, 0.3, 0.4]
+    },
+    "balance": {
+      "features": ["runningBalance", "afterContactStability"],
+      "weights": [0.5, 0.5]
+    },
+    "elusiveness": {
+      "features": ["makeYouMiss", "openFieldMoves"],
+      "weights": [0.5, 0.5]
+    }
+  },
+  "weights": {
+    "running": 0.6,
+    "receiving": 0.4
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "position": "DB",
+  "name": "Defensive Back",
+  "features": {
+    "backpedal": [
+      { "name": "backpedalTechnique", "source": "pose_estimation", "type": "numeric" },
+      { "name": "cadence", "source": "tracking_data", "type": "numeric" }
+    ],
+    "man_coverage": [
+      { "name": "staySquare", "source": "pose_estimation", "type": "numeric" },
+      { "name": "mirror", "source": "tracking_data", "type": "numeric" },
+      { "name": "hipTurn", "source": "pose_estimation", "type": "numeric" }
+    ],
+    "zone_coverage": [
+      { "name": "zoneRange", "source": "tracking_data", "type": "numeric" },
+      { "name": "areaAwareness", "source": "video_analysis", "type": "numeric" }
+    ],
+    "ball_skills": [
+      { "name": "handTracking", "source": "pose_estimation", "type": "numeric" },
+      { "name": "ballTracking", "source": "tracking_data", "type": "numeric" }
+    ]
+  },
+  "traits": {
+    "pressTechnique": {
+      "features": ["staySquare"],
+      "weights": [1.0]
+    },
+    "transitions": {
+      "features": ["hipTurn", "mirror"],
+      "weights": [0.5, 0.5]
+    },
+    "coverage": {
+      "features": ["zoneRange", "areaAwareness", "mirror"],
+      "weights": [0.3, 0.3, 0.4]
+    },
+    "ballSkills": {
+      "features": ["handTracking", "ballTracking"],
+      "weights": [0.5, 0.5]
+    }
+  },
+  "weights": {
+    "coverage": 0.7,
+    "run_defense": 0.3
+  }
+}

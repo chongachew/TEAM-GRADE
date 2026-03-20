@@ -1,0 +1,162 @@
+# TEAM-GRADE Local Processing Pipeline Configuration
+# Customize these settings for your hardware and use case
+
+# ============================================================================
+# POSE ESTIMATION SETTINGS
+# ============================================================================
+pose_estimation:
+  # Model options: mediapipe, yolo, openpose
+  model: "mediapipe"
+  
+  # Device: cpu, cuda, mps (Metal Performance Shaders for Mac)
+  device: "cpu"
+  
+  # MediaPipe-specific
+  mediapipe:
+    model_complexity: 1  # 0 (lite), 1 (full), 2 (heavy)
+    confidence_threshold: 0.5
+    nms_threshold: 0.3
+  
+  # YOLO-specific
+  yolo:
+    model_size: "m"  # n, s, m, l, x
+    confidence: 0.5
+    iou: 0.45
+
+# ============================================================================
+# TORSO CROPPING SETTINGS
+# ============================================================================
+torso_cropping:
+  # Keypoint confidence threshold (0.0 to 1.0)
+  keypoint_confidence: 0.3
+  
+  # Minimum crop size (pixels)
+  min_width: 50
+  min_height: 80
+  
+  # Expansion around detected torso (percentage of bbox)
+  expansion_factor: 0.1
+  
+  # Standard crop size for normalization
+  standard_width: 224
+  standard_height: 224
+
+# ============================================================================
+# JERSEY OCR SETTINGS
+# ============================================================================
+jersey_ocr:
+  # OCR engine: easyocr, paddleocr, tesseract
+  engine: "easyocr"
+  
+  # Language(s) to recognize
+  languages: ["en"]
+  
+  # GPU acceleration
+  gpu: true
+  
+  # EasyOCR-specific
+  easyocr:
+    model_storage_directory: null  # Auto-detect if null
+    user_network_directory: null
+    cache_dir: null
+  
+  # PaddleOCR-specific
+  paddleocr:
+    use_angle_cls: true
+    cls_model_dir: null
+    rec_model_dir: null
+  
+  # Confidence thresholds
+  min_confidence: 0.3
+  min_jersey_length: 1
+  max_jersey_length: 3
+
+# ============================================================================
+# REP EXTRACTION SETTINGS
+# ============================================================================
+rep_extraction:
+  # Motion detection threshold
+  motion_threshold: 0.05
+  
+  # Minimum rep duration (frames)
+  min_rep_duration: 5
+  
+  # Maximum gap to bridge between motion segments (frames)
+  max_gap: 10
+  
+  # Keypoints to track for motion (from MediaPipe: 0-32)
+  keypoints_for_motion: [11, 12, 23, 24]  # Shoulders and hips
+  
+  # Smoothing window size
+  smoothing_window: 5
+
+# ============================================================================
+# FRAME EXTRACTION SETTINGS
+# ============================================================================
+frame_extraction:
+  # Frame sampling stride (1 = every frame, 2 = every 2nd, etc)
+  stride: 1
+  
+  # Image format: jpg, png
+  format: "jpg"
+  
+  # JPEG quality (if format is jpg)
+  quality: 85
+  
+  # Resize frames before processing
+  resize:
+    enabled: false
+    width: 640
+    height: 480
+
+# ============================================================================
+# PROCESSING SETTINGS
+# ============================================================================
+processing:
+  # Number of parallel workers for batch processing
+  num_workers: 4
+  
+  # Batch size for pose estimation
+  pose_batch_size: 1
+  
+  # Max frames to process per video (-1 = all)
+  max_frames: -1
+  
+  # Save intermediate results
+  save_poses: true
+  save_crops: true
+  save_ocr_results: true
+
+# ============================================================================
+# LOGGING SETTINGS
+# ============================================================================
+logging:
+  # Console log level: DEBUG, INFO, WARNING, ERROR
+  console_level: "INFO"
+  
+  # File log level
+  file_level: "DEBUG"
+  
+  # Log file name
+  log_file: "pipeline.log"
+  
+  # Keep log files (0 = unlimited)
+  backup_count: 5
+
+# ============================================================================
+# OUTPUT SETTINGS
+# ============================================================================
+output:
+  # Directory structure
+  dirs:
+    raw_videos: "raw_videos"
+    extracted_frames: "extracted_frames"
+    pose_outputs: "pose_outputs"
+    torso_crops: "torso_crops"
+    logs: "logs"
+  
+  # Result file formats
+  format: "json"  # json, csv
+  
+  # Compress outputs
+  compress: false

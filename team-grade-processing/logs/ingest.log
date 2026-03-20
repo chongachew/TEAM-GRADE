@@ -1,0 +1,244 @@
+2026-03-13 12:46:32,118 - __main__ - INFO - ============================================================
+2026-03-13 12:46:32,120 - __main__ - INFO - TEAM-GRADE Ingestion Worker Started
+2026-03-13 12:46:32,121 - __main__ - INFO - Log file: logs\ingest.log
+2026-03-13 12:46:32,121 - __main__ - INFO - ============================================================
+2026-03-13 12:47:50,828 - __main__ - INFO - ============================================================
+2026-03-13 12:47:50,829 - __main__ - INFO - TEAM-GRADE Ingestion Worker Started
+2026-03-13 12:47:50,829 - __main__ - INFO - Log file: logs\ingest.log
+2026-03-13 12:47:50,829 - __main__ - INFO - ============================================================
+2026-03-13 12:47:50,830 - ingest.youtube_downloader - INFO - Initialized downloader with output dir: raw_videos
+2026-03-13 12:47:58,593 - ingest.firestore_client - INFO - Initializing Firestore client for project: the-bridge-athletics1
+2026-03-13 12:48:10,569 - ingest.firestore_client - ERROR - Failed to initialize Firestore: Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information.
+2026-03-13 12:48:10,570 - __main__ - ERROR - Failed to initialize Firestore: Firestore initialization failed: Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information.
+2026-03-13 14:00:09,737 - __main__ - INFO - ============================================================
+2026-03-13 14:00:09,749 - __main__ - INFO - TEAM-GRADE Ingestion Worker Started
+2026-03-13 14:00:09,749 - __main__ - INFO - Log file: logs\ingest.log
+2026-03-13 14:00:09,749 - __main__ - INFO - ============================================================
+2026-03-13 14:00:09,750 - ingest.youtube_downloader - INFO - Initialized downloader with output dir: raw_videos
+2026-03-13 14:00:09,751 - __main__ - INFO - Using credentials file: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 14:00:17,204 - ingest.firestore_client - INFO - Initializing Firestore client for project: the-bridge-athletics1
+2026-03-13 14:00:17,204 - ingest.firestore_client - INFO - Credentials path: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 14:00:18,073 - ingest.queue_manager - INFO - Queue manager initialized
+2026-03-13 15:12:50,032 - __main__ - INFO - ============================================================
+2026-03-13 15:12:50,034 - __main__ - INFO - TEAM-GRADE Ingestion Worker Started
+2026-03-13 15:12:50,034 - __main__ - INFO - Log file: logs\ingest.log
+2026-03-13 15:12:50,034 - __main__ - INFO - ============================================================
+2026-03-13 15:12:50,034 - ingest.youtube_downloader - INFO - Initialized downloader with output dir: raw_videos
+2026-03-13 15:12:50,035 - __main__ - INFO - Using credentials file: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 15:12:58,776 - ingest.firestore_client - INFO - Initializing Firestore client for project: the-bridge-athletics1
+2026-03-13 15:12:58,777 - ingest.firestore_client - INFO - Credentials path: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 15:12:59,630 - ingest.queue_manager - INFO - Queue manager initialized
+2026-03-13 15:12:59,633 - __main__ - INFO - 
+============================================================
+2026-03-13 15:12:59,634 - __main__ - INFO - Listening for jobs in queue...
+2026-03-13 15:12:59,634 - __main__ - INFO - ============================================================
+
+2026-03-13 15:12:59,785 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cl1wcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL18QARoKCgZzdGF0dXMQARoMCghwcmlvcml0eRABGg4KCmNyZWF0ZWRfYXQQARoMCghfX25hbWVfXxAB
+2026-03-13 15:13:04,928 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cl1wcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL18QARoKCgZzdGF0dXMQARoMCghwcmlvcml0eRABGg4KCmNyZWF0ZWRfYXQQARoMCghfX25hbWVfXxAB
+2026-03-13 15:13:10,067 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cl1wcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL18QARoKCgZzdGF0dXMQARoMCghwcmlvcml0eRABGg4KCmNyZWF0ZWRfYXQQARoMCghfX25hbWVfXxAB
+2026-03-13 15:13:15,195 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cl1wcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL18QARoKCgZzdGF0dXMQARoMCghwcmlvcml0eRABGg4KCmNyZWF0ZWRfYXQQARoMCghfX25hbWVfXxAB
+2026-03-13 15:13:20,323 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cl1wcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL18QARoKCgZzdGF0dXMQARoMCghwcmlvcml0eRABGg4KCmNyZWF0ZWRfYXQQARoMCghfX25hbWVfXxAB
+2026-03-13 15:13:25,442 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cl1wcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL18QARoKCgZzdGF0dXMQARoMCghwcmlvcml0eRABGg4KCmNyZWF0ZWRfYXQQARoMCghfX25hbWVfXxAB
+2026-03-13 15:13:30,824 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cl1wcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL18QARoKCgZzdGF0dXMQARoMCghwcmlvcml0eRABGg4KCmNyZWF0ZWRfYXQQARoMCghfX25hbWVfXxAB
+2026-03-13 15:13:35,936 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cl1wcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL18QARoKCgZzdGF0dXMQARoMCghwcmlvcml0eRABGg4KCmNyZWF0ZWRfYXQQARoMCghfX25hbWVfXxAB
+2026-03-13 15:13:41,054 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cl1wcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL18QARoKCgZzdGF0dXMQARoMCghwcmlvcml0eRABGg4KCmNyZWF0ZWRfYXQQARoMCghfX25hbWVfXxAB
+2026-03-13 15:13:46,159 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cl1wcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL18QARoKCgZzdGF0dXMQARoMCghwcmlvcml0eRABGg4KCmNyZWF0ZWRfYXQQARoMCghfX25hbWVfXxAB
+2026-03-13 15:13:51,292 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cl1wcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL18QARoKCgZzdGF0dXMQARoMCghwcmlvcml0eRABGg4KCmNyZWF0ZWRfYXQQARoMCghfX25hbWVfXxAB
+2026-03-13 15:13:56,401 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:14:01,578 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cl1wcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL18QARoKCgZzdGF0dXMQARoMCghwcmlvcml0eRABGg4KCmNyZWF0ZWRfYXQQARoMCghfX25hbWVfXxAB
+2026-03-13 15:14:06,690 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:14:11,875 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:14:16,997 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:14:22,104 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cl1wcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL18QARoKCgZzdGF0dXMQARoMCghwcmlvcml0eRABGg4KCmNyZWF0ZWRfYXQQARoMCghfX25hbWVfXxAB
+2026-03-13 15:14:27,210 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:14:32,321 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:14:37,446 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:14:42,580 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:14:47,696 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:14:52,812 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:14:57,929 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:15:03,166 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:15:08,272 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:15:13,489 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:15:18,590 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:15:23,808 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:15:28,912 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:15:34,029 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:15:39,141 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:15:44,240 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:15:49,353 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:15:54,468 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:15:59,591 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:16:04,706 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:16:09,828 - ingest.firestore_client - ERROR - Failed to dequeue video: 400 The query requires an index. That index is currently building and cannot be used yet. See its status here: https://console.firebase.google.com/v1/r/project/the-bridge-athletics1/firestore/indexes?create_composite=Cmhwcm9qZWN0cy90aGUtYnJpZGdlLWF0aGxldGljczEvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL2luZ2VzdGlvbl9xdWV1ZS9pbmRleGVzL0NJQ0FnT2pYaDRFSxABGgoKBnN0YXR1cxABGgwKCHByaW9yaXR5EAEaDgoKY3JlYXRlZF9hdBABGgwKCF9fbmFtZV9fEAE
+2026-03-13 15:17:24,482 - __main__ - INFO - 
+============================================================
+2026-03-13 15:17:24,483 - __main__ - INFO - Worker stopped by user
+2026-03-13 15:17:24,484 - __main__ - INFO - ============================================================
+2026-03-13 15:17:28,258 - __main__ - INFO - ============================================================
+2026-03-13 15:17:28,259 - __main__ - INFO - TEAM-GRADE Ingestion Worker Started
+2026-03-13 15:17:28,259 - __main__ - INFO - Log file: logs\ingest.log
+2026-03-13 15:17:28,260 - __main__ - INFO - ============================================================
+2026-03-13 15:17:28,260 - ingest.youtube_downloader - INFO - Initialized downloader with output dir: raw_videos
+2026-03-13 15:17:28,261 - __main__ - INFO - Using credentials file: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 15:17:36,742 - ingest.firestore_client - INFO - Initializing Firestore client for project: the-bridge-athletics1
+2026-03-13 15:17:36,743 - ingest.firestore_client - INFO - Credentials path: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 15:17:37,583 - ingest.queue_manager - INFO - Queue manager initialized
+2026-03-13 15:17:37,590 - __main__ - INFO - 
+============================================================
+2026-03-13 15:17:37,594 - __main__ - INFO - Listening for jobs in queue...
+2026-03-13 15:17:37,595 - __main__ - INFO - ============================================================
+
+2026-03-13 15:33:03,526 - __main__ - INFO - 
+============================================================
+2026-03-13 15:33:03,537 - __main__ - INFO - Worker stopped by user
+2026-03-13 15:33:03,537 - __main__ - INFO - ============================================================
+2026-03-13 16:07:01,864 - __main__ - INFO - ============================================================
+2026-03-13 16:07:01,866 - __main__ - INFO - TEAM-GRADE Ingestion Worker Started
+2026-03-13 16:07:01,866 - __main__ - INFO - Log file: logs\ingest.log
+2026-03-13 16:07:01,866 - __main__ - INFO - ============================================================
+2026-03-13 16:07:01,867 - ingest.youtube_downloader - INFO - Initialized downloader with output dir: raw_videos
+2026-03-13 16:07:01,869 - __main__ - INFO - Using credentials file: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 16:07:16,690 - ingest.firestore_client - INFO - Initializing Firestore client for project: the-bridge-athletics1
+2026-03-13 16:07:16,691 - ingest.firestore_client - INFO - Credentials path: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 16:07:17,536 - ingest.queue_manager - INFO - Queue manager initialized
+2026-03-13 16:07:17,546 - __main__ - INFO - 
+============================================================
+2026-03-13 16:07:17,550 - __main__ - INFO - Listening for jobs in queue...
+2026-03-13 16:07:17,550 - __main__ - INFO - ============================================================
+
+2026-03-13 16:35:50,815 - __main__ - INFO - ============================================================
+2026-03-13 16:35:50,816 - __main__ - INFO - TEAM-GRADE Ingestion Worker Started
+2026-03-13 16:35:50,816 - __main__ - INFO - Log file: logs\ingest.log
+2026-03-13 16:35:50,816 - __main__ - INFO - ============================================================
+2026-03-13 16:35:50,817 - ingest.youtube_downloader - INFO - Initialized downloader with output dir: raw_videos
+2026-03-13 16:35:50,819 - __main__ - INFO - Using credentials file: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 16:35:58,128 - ingest.firestore_client - INFO - Initializing Firestore client for project: the-bridge-athletics1
+2026-03-13 16:35:58,129 - ingest.firestore_client - INFO - Credentials path: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 16:35:58,894 - ingest.queue_manager - INFO - Queue manager initialized
+2026-03-13 16:35:58,897 - __main__ - INFO - 
+============================================================
+2026-03-13 16:35:58,899 - __main__ - INFO - Listening for jobs in queue...
+2026-03-13 16:35:58,900 - __main__ - INFO - ============================================================
+
+2026-03-13 16:36:12,040 - __main__ - INFO - 
+============================================================
+2026-03-13 16:36:12,057 - __main__ - INFO - Worker stopped by user
+2026-03-13 16:36:12,057 - __main__ - INFO - ============================================================
+2026-03-13 16:49:46,295 - __main__ - INFO - 
+============================================================
+2026-03-13 16:49:46,324 - __main__ - INFO - Worker stopped by user
+2026-03-13 16:49:46,325 - __main__ - INFO - ============================================================
+2026-03-13 16:51:30,516 - __main__ - INFO - ============================================================
+2026-03-13 16:51:30,517 - __main__ - INFO - TEAM-GRADE Ingestion Worker Started
+2026-03-13 16:51:30,518 - __main__ - INFO - Log file: logs\ingest.log
+2026-03-13 16:51:30,518 - __main__ - INFO - ============================================================
+2026-03-13 16:51:30,519 - ingest.youtube_downloader - INFO - Initialized downloader with output dir: raw_videos
+2026-03-13 16:51:30,520 - __main__ - INFO - Using credentials file: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 16:51:32,551 - ingest.firestore_client - INFO - Initializing Firestore client for project: the-bridge-athletics1
+2026-03-13 16:51:32,552 - ingest.firestore_client - INFO - Credentials path: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 16:51:32,554 - ingest.firestore_client - INFO - [OK] Found credentials file: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 16:51:32,556 - ingest.firestore_client - INFO - [OK] Loaded service account from JSON
+2026-03-13 16:51:32,621 - ingest.firestore_client - INFO - [OK] Created service account credentials
+2026-03-13 16:51:32,621 - ingest.firestore_client - INFO - [OK] Firestore client initialized for project: the-bridge-athletics1
+2026-03-13 16:51:33,114 - ingest.firestore_client - INFO - [OK] Firestore client initialized successfully
+2026-03-13 16:51:33,114 - ingest.queue_manager - INFO - Queue manager initialized
+2026-03-13 16:51:33,114 - __main__ - INFO - [OK] Firestore initialized
+2026-03-13 16:51:33,115 - __main__ - INFO - [OK] Ingestion worker initialized
+2026-03-13 16:51:33,115 - __main__ - INFO - 
+============================================================
+2026-03-13 16:51:33,115 - __main__ - INFO - [OK] Ingestion Worker Started (Listener Mode)
+2026-03-13 16:51:33,115 - __main__ - INFO - Listening for jobs in queue...
+2026-03-13 16:51:33,115 - __main__ - INFO - ============================================================
+
+2026-03-13 16:52:18,215 - __main__ - INFO - ============================================================
+2026-03-13 16:52:18,218 - __main__ - INFO - TEAM-GRADE Ingestion Worker Started
+2026-03-13 16:52:18,218 - __main__ - INFO - Log file: logs\ingest.log
+2026-03-13 16:52:18,218 - __main__ - INFO - ============================================================
+2026-03-13 16:52:18,218 - ingest.youtube_downloader - INFO - Initialized downloader with output dir: raw_videos
+2026-03-13 16:52:18,220 - __main__ - INFO - Using credentials file: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 16:52:21,144 - ingest.firestore_client - INFO - Initializing Firestore client for project: the-bridge-athletics1
+2026-03-13 16:52:21,144 - ingest.firestore_client - INFO - Credentials path: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 16:52:21,144 - ingest.firestore_client - INFO - [OK] Found credentials file: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 16:52:21,148 - ingest.firestore_client - INFO - [OK] Loaded service account from JSON
+2026-03-13 16:52:21,326 - ingest.firestore_client - INFO - [OK] Created service account credentials
+2026-03-13 16:52:21,326 - ingest.firestore_client - INFO - [OK] Firestore client initialized for project: the-bridge-athletics1
+2026-03-13 16:52:21,869 - ingest.firestore_client - INFO - [OK] Firestore client initialized successfully
+2026-03-13 16:52:21,870 - ingest.queue_manager - INFO - Queue manager initialized
+2026-03-13 16:52:21,870 - __main__ - INFO - [OK] Firestore initialized
+2026-03-13 16:52:21,870 - __main__ - INFO - [OK] Ingestion worker initialized
+2026-03-13 16:52:21,870 - __main__ - INFO - 
+============================================================
+2026-03-13 16:52:21,871 - __main__ - INFO - [OK] Ingestion Worker Started (Listener Mode)
+2026-03-13 16:52:21,871 - __main__ - INFO - Listening for jobs in queue...
+2026-03-13 16:52:21,872 - __main__ - INFO - ============================================================
+
+2026-03-13 16:52:58,099 - __main__ - INFO - ============================================================
+2026-03-13 16:52:58,099 - __main__ - INFO - TEAM-GRADE Ingestion Worker Started
+2026-03-13 16:52:58,099 - __main__ - INFO - Log file: logs\ingest.log
+2026-03-13 16:52:58,099 - __main__ - INFO - ============================================================
+2026-03-13 16:52:58,100 - ingest.youtube_downloader - INFO - Initialized downloader with output dir: raw_videos
+2026-03-13 16:52:58,100 - __main__ - INFO - Using credentials file: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 16:52:58,929 - ingest.firestore_client - INFO - Initializing Firestore client for project: the-bridge-athletics1
+2026-03-13 16:52:58,929 - ingest.firestore_client - INFO - Credentials path: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 16:52:58,929 - ingest.firestore_client - INFO - [OK] Found credentials file: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 16:52:58,930 - ingest.firestore_client - INFO - [OK] Loaded service account from JSON
+2026-03-13 16:52:58,972 - ingest.firestore_client - INFO - [OK] Created service account credentials
+2026-03-13 16:52:58,973 - ingest.firestore_client - INFO - [OK] Firestore client initialized for project: the-bridge-athletics1
+2026-03-13 16:52:59,638 - ingest.firestore_client - INFO - [OK] Firestore client initialized successfully
+2026-03-13 16:52:59,638 - ingest.queue_manager - INFO - Queue manager initialized
+2026-03-13 16:52:59,638 - __main__ - INFO - [OK] Firestore initialized
+2026-03-13 16:52:59,638 - __main__ - INFO - [OK] Ingestion worker initialized
+2026-03-13 16:52:59,638 - __main__ - INFO - 
+============================================================
+2026-03-13 16:52:59,638 - __main__ - INFO - [OK] Ingestion Worker Started (Listener Mode)
+2026-03-13 16:52:59,638 - __main__ - INFO - Listening for jobs in queue...
+2026-03-13 16:52:59,639 - __main__ - INFO - ============================================================
+
+2026-03-13 17:46:30,880 - __main__ - INFO - ============================================================
+2026-03-13 17:46:30,881 - __main__ - INFO - TEAM-GRADE Ingestion Worker Started
+2026-03-13 17:46:30,882 - __main__ - INFO - Log file: logs\ingest.log
+2026-03-13 17:46:30,882 - __main__ - INFO - ============================================================
+2026-03-13 17:46:30,883 - ingest.youtube_downloader - INFO - Initialized downloader with output dir: raw_videos
+2026-03-13 17:46:30,884 - __main__ - INFO - Using credentials file: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 17:46:55,064 - ingest.firestore_client - INFO - Initializing Firestore client for project: the-bridge-athletics1
+2026-03-13 17:46:55,067 - ingest.firestore_client - INFO - Credentials path: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 17:46:55,068 - ingest.firestore_client - INFO - [OK] Found credentials file: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 17:46:55,076 - ingest.firestore_client - INFO - [OK] Loaded service account from JSON
+2026-03-13 17:46:55,269 - ingest.firestore_client - INFO - [OK] Created service account credentials
+2026-03-13 17:46:55,270 - ingest.firestore_client - INFO - [OK] Firestore client initialized for project: the-bridge-athletics1
+2026-03-13 17:46:56,812 - ingest.firestore_client - INFO - [OK] Firestore client initialized successfully
+2026-03-13 17:46:56,812 - ingest.queue_manager - INFO - Queue manager initialized
+2026-03-13 17:46:56,813 - __main__ - INFO - [OK] Firestore initialized
+2026-03-13 17:46:56,814 - __main__ - INFO - [OK] Ingestion worker initialized
+2026-03-13 17:46:56,815 - __main__ - INFO - 
+============================================================
+2026-03-13 17:46:56,815 - __main__ - INFO - [OK] Ingestion Worker Started (Listener Mode)
+2026-03-13 17:46:56,816 - __main__ - INFO - Listening for jobs in queue...
+2026-03-13 17:46:56,816 - __main__ - INFO - ============================================================
+
+2026-03-13 17:56:30,500 - __main__ - INFO - ============================================================
+2026-03-13 17:56:30,504 - __main__ - INFO - TEAM-GRADE Ingestion Worker Started
+2026-03-13 17:56:30,505 - __main__ - INFO - Log file: logs\ingest.log
+2026-03-13 17:56:30,506 - __main__ - INFO - ============================================================
+2026-03-13 17:56:30,507 - ingest.youtube_downloader - INFO - Initialized downloader with output dir: raw_videos
+2026-03-13 17:56:30,511 - __main__ - INFO - Using credentials file: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 17:56:42,013 - ingest.firestore_client - INFO - Initializing Firestore client for project: the-bridge-athletics1
+2026-03-13 17:56:42,013 - ingest.firestore_client - INFO - Credentials path: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 17:56:42,014 - ingest.firestore_client - INFO - [OK] Found credentials file: C:\Users\ricky\OneDrive\Desktop\Team-Grade\TEAM-GRADE\credentials\service-account.json
+2026-03-13 17:56:42,015 - ingest.firestore_client - INFO - [OK] Loaded service account from JSON
+2026-03-13 17:56:42,163 - ingest.firestore_client - INFO - [OK] Created service account credentials
+2026-03-13 17:56:42,164 - ingest.firestore_client - INFO - [OK] Firestore client initialized for project: the-bridge-athletics1
+2026-03-13 17:56:43,469 - ingest.firestore_client - INFO - [OK] Firestore client initialized successfully
+2026-03-13 17:56:43,470 - ingest.queue_manager - INFO - Queue manager initialized
+2026-03-13 17:56:43,470 - __main__ - INFO - [OK] Firestore initialized
+2026-03-13 17:56:43,471 - __main__ - INFO - [OK] Ingestion worker initialized
+2026-03-13 17:56:43,471 - __main__ - INFO - 
+============================================================
+2026-03-13 17:56:43,471 - __main__ - INFO - [OK] Ingestion Worker Started (Listener Mode)
+2026-03-13 17:56:43,472 - __main__ - INFO - Listening for jobs in queue...
+2026-03-13 17:56:43,472 - __main__ - INFO - ============================================================
+
+2026-03-14 08:28:22,862 - ingest.firestore_client - ERROR - Failed to dequeue video: Timeout of 300.0s exceeded, last exception: 503 failed to connect to all addresses; last error: UNAVAILABLE: ipv4:142.251.46.74:443: ConnectEx: Network is unreachable (A socket operation was attempted to an unreachable network.
+ -- 10051)
+2026-03-14 08:33:24,219 - ingest.firestore_client - ERROR - Failed to dequeue video: Timeout of 300.0s exceeded, last exception: 503 failed to connect to all addresses; last error: UNKNOWN: ipv4:142.250.73.74:443: socket is null

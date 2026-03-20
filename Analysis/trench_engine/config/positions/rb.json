@@ -1,0 +1,104 @@
+{
+  "position": "RB",
+  "name": "Running Back",
+  "description": "Running Back vision, burst, balance, and elusiveness analysis",
+  "features": {
+    "vision": [
+      {
+        "name": "readBlocks",
+        "source": "video_analysis",
+        "description": "Ability to read and react to blocks",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "anticipation",
+        "source": "tracking_data",
+        "description": "Pre-snap reads and anticipation",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "cutbackRecognition",
+        "source": "tracking_data",
+        "description": "Ability to recognize cutback lanes",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "burst": [
+      {
+        "name": "burstTime",
+        "source": "biomechanics",
+        "description": "Time to reach max velocity",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "acceleration",
+        "source": "tracking_data",
+        "description": "Rate of acceleration",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "balance": [
+      {
+        "name": "runningBalance",
+        "source": "pose_estimation",
+        "description": "Balance while running with ball",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "afterContactStability",
+        "source": "biomechanics",
+        "description": "Stability after contact",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ],
+    "elusiveness": [
+      {
+        "name": "makeYouMiss",
+        "source": "tracking_data",
+        "description": "Ability to make defenders miss",
+        "type": "numeric",
+        "normalization": "percentile"
+      },
+      {
+        "name": "openFieldMoves",
+        "source": "tracking_data",
+        "description": "Effectiveness of open field cuts and moves",
+        "type": "numeric",
+        "normalization": "percentile"
+      }
+    ]
+  },
+  "traits": {
+    "burst": {
+      "features": ["burstTime", "acceleration"],
+      "weights": [0.4, 0.6],
+      "description": "Explosive acceleration"
+    },
+    "vision": {
+      "features": ["readBlocks", "anticipation", "cutbackRecognition"],
+      "weights": [0.3, 0.3, 0.4],
+      "description": "Field vision and run recognition"
+    },
+    "balance": {
+      "features": ["runningBalance", "afterContactStability"],
+      "weights": [0.5, 0.5],
+      "description": "Balance through the run"
+    },
+    "elusiveness": {
+      "features": ["makeYouMiss", "openFieldMoves"],
+      "weights": [0.5, 0.5],
+      "description": "Elusiveness and lateral ability"
+    }
+  },
+  "weights": {
+    "running": 0.6,
+    "receiving": 0.4
+  }
+}

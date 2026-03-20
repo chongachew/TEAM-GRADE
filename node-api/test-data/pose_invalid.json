@@ -1,0 +1,15 @@
+{
+  "frames": [
+    {
+      "timestamp": 0.016,
+      "keypoints": {
+        "hip_left": null,
+        "hip_right": { "x": "bad", "y": 0.61, "z": 0.10 },
+        "shoulder_left": {},
+        "shoulder_right": { "x": 0.56 },
+        "ankle_left": { "x": 0.46, "y": 0.88 },
+        "ankle_right": "not an object"
+      }
+    }
+  ]
+}

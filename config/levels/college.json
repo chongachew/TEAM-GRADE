@@ -1,0 +1,12 @@
+{
+  "level": "college",
+  "bucketing": {
+    "numeric": {
+      "elite": { "min": 90, "max": 100 },
+      "high": { "min": 75, "max": 89 },
+      "average": { "min": 50, "max": 74 },
+      "below_average": { "min": 25, "max": 49 },
+      "poor": { "min": 0, "max": 24 }
+    }
+  }
+}

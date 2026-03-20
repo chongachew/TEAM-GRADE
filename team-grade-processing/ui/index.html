@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TEAM-GRADE - YouTube Ingestion</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-slate-900 to-slate-800 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-2xl">
+        <!-- Header -->
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-white mb-2">TEAM-GRADE</h1>
+            <p class="text-slate-400">YouTube Video Ingestion System</p>
+        </div>
+
+        <!-- Main Card -->
+        <div class="bg-slate-800 rounded-lg shadow-2xl border border-slate-700 p-8">
+            
+            <!-- Input Section -->
+            <div class="mb-8">
+                <label for="youtube-url" class="block text-sm font-semibold text-slate-200 mb-3">
+                    YouTube URL
+                </label>
+                <input
+                    type="text"
+                    id="youtube-url"
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    class="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-opacity-20 transition-all"
+                />
+            </div>
+
+            <!-- Ingest Button -->
+            <button
+                id="ingest-btn"
+                onclick="handleIngest()"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 mb-8"
+            >
+                Ingest Video
+            </button>
+
+            <!-- Status Section (Initially Hidden) -->
+            <div id="status-section" class="hidden">
+                <div class="border-t border-slate-700 pt-8">
+                    <!-- Video ID Display -->
+                    <div class="mb-6">
+                        <p class="text-slate-400 text-sm mb-2">Video ID:</p>
+                        <p id="video-id-display" class="text-slate-200 font-mono text-sm bg-slate-700 p-3 rounded-lg break-all">
+                            -
+                        </p>
+                    </div>
+
+                    <!-- Status Display -->
+                    <div class="grid grid-cols-2 gap-4 mb-6">
+                        <div class="bg-slate-700 rounded-lg p-4">
+                            <p class="text-slate-400 text-sm mb-2">Status</p>
+                            <p id="status-display" class="text-slate-200 font-semibold">
+                                -
+                            </p>
+                        </div>
+                        <div class="bg-slate-700 rounded-lg p-4">
+                            <p class="text-slate-400 text-sm mb-2">Stage</p>
+                            <p id="stage-display" class="text-slate-200 font-semibold">
+                                -
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="mb-6">
+                        <p class="text-slate-400 text-sm mb-3">Progress</p>
+                        <div class="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
+                            <div
+                                id="progress-bar"
+                                class="bg-gradient-to-r from-blue-500 to-purple-500 h-full transition-all duration-500 rounded-full"
+                                style="width: 0%"
+                            ></div>
+                        </div>
+                        <p id="progress-text" class="text-slate-400 text-xs mt-2">0%</p>
+                    </div>
+
+                    <!-- Stage Timeline -->
+                    <div class="mb-6">
+                        <p class="text-slate-400 text-sm mb-3">Pipeline Stages</p>
+                        <div class="space-y-2">
+                            <div class="flex items-center gap-3">
+                                <div id="stage-metadata" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
+                                <span class="text-slate-300 text-sm">Metadata Extraction</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <div id="stage-download" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
+                                <span class="text-slate-300 text-sm">Download</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <div id="stage-frame" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
+                                <span class="text-slate-300 text-sm">Frame Extraction</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <div id="stage-pose" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
+                                <span class="text-slate-300 text-sm">Pose Estimation</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <div id="stage-torso" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
+                                <span class="text-slate-300 text-sm">Torso Cropping</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <div id="stage-jersey" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
+                                <span class="text-slate-300 text-sm">Jersey OCR</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <div id="stage-rep" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
+                                <span class="text-slate-300 text-sm">Rep Extraction</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <div id="stage-completed" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
+                                <span class="text-slate-300 text-sm">Completed</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Error Display (if applicable) -->
+                    <div id="error-section" class="hidden">
+                        <div class="bg-red-900 bg-opacity-30 border border-red-700 rounded-lg p-4 mb-6">
+                            <p class="text-red-400 text-sm font-semibold mb-2">Error</p>
+                            <p id="error-display" class="text-red-300 text-sm break-all">
+                                -
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex gap-3">
+                        <button
+                            id="reset-btn"
+                            onclick="handleReset()"
+                            class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200"
+                        >
+                            Reset
+                        </button>
+                        <button
+                            id="copy-btn"
+                            onclick="handleCopyVideoId()"
+                            class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200"
+                        >
+                            Copy Video ID
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading Indicator -->
+            <div id="loading-section" class="hidden text-center">
+                <div class="flex justify-center mb-4">
+                    <div class="w-12 h-12 rounded-full border-4 border-slate-700 border-t-blue-500 animate-spin"></div>
+                </div>
+                <p class="text-slate-300">Processing ingestion request...</p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="text-center mt-8 text-slate-500 text-sm">
+            <p>API: <span id="api-status" class="text-green-400">Connected</span></p>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_URL = "http://localhost:8000";
+        const POLL_INTERVAL = 2000; // 2 seconds
+        let currentVideoId = null;
+        let pollingInterval = null;
+
+        // Stage order for progress tracking
+        const stages = [
+            "metadata",
+            "download",
+            "frame_extraction",
+            "pose_estimation",
+            "torso_cropping",
+            "jersey_ocr",
+            "rep_extraction",
+            "completed"
+        ];
+
+        // ====================================================================
+        // Main Functions
+        // ====================================================================
+
+        async function handleIngest() {
+            const urlInput = document.getElementById("youtube-url").value.trim();
+
+            if (!urlInput) {
+                alert("Please enter a YouTube URL");
+                return;
+            }
+
+            // Validate URL format
+            if (!isValidYouTubeUrl(urlInput)) {
+                alert("Invalid YouTube URL. Please use a valid YouTube link.");
+                return;
+            }
+
+            // Show loading
+            showLoading();
+
+            try {
+                const response = await fetch(`${API_URL}/ingest`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ url: urlInput })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || "Failed to ingest video");
+                }
+
+                const data = await response.json();
+                currentVideoId = data.video_id;
+
+                // Display status
+                hideLoading();
+                showStatus();
+                updateStatusDisplay(currentVideoId);
+
+                // Start polling
+                startPolling(currentVideoId);
+
+            } catch (error) {
+                hideLoading();
+                alert(`Error: ${error.message}`);
+                console.error("Ingestion error:", error);
+            }
+        }
+
+        async function updateStatusDisplay(videoId) {
+            try {
+                const response = await fetch(`${API_URL}/status/${videoId}`);
+
+                if (!response.ok) {
+                    throw new Error("Failed to fetch status");
+                }
+
+                const data = await response.json();
+
+                // Update displays
+                document.getElementById("video-id-display").textContent = videoId;
+                document.getElementById("status-display").textContent = formatStatus(data.status);
+                document.getElementById("stage-display").textContent = formatStage(data.stage);
+                
+                // Update progress bar
+                const progress = data.progress || 0;
+                document.getElementById("progress-bar").style.width = progress + "%";
+                document.getElementById("progress-text").textContent = progress + "%";
+
+                // Update stage indicators
+                updateStageIndicators(data.stage);
+
+                // Handle errors
+                if (data.error) {
+                    showError(data.error);
+                } else {
+                    hideError();
+                }
+
+                // Stop polling if completed or failed
+                if (data.status === "completed" || data.status === "failed") {
+                    stopPolling();
+                }
+
+            } catch (error) {
+                console.error("Status update error:", error);
+            }
+        }
+
+        function startPolling(videoId) {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+
+            pollingInterval = setInterval(() => {
+                updateStatusDisplay(videoId);
+            }, POLL_INTERVAL);
+        }
+
+        function stopPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+        }
+
+        function handleReset() {
+            stopPolling();
+            currentVideoId = null;
+            document.getElementById("youtube-url").value = "";
+            document.getElementById("youtube-url").focus();
+            hideStatus();
+            hideLoading();
+            hideError();
+        }
+
+        function handleCopyVideoId() {
+            if (currentVideoId) {
+                navigator.clipboard.writeText(currentVideoId);
+                alert("Video ID copied to clipboard!");
+            }
+        }
+
+        // ====================================================================
+        // UI Updates
+        // ====================================================================
+
+        function showStatus() {
+            document.getElementById("status-section").classList.remove("hidden");
+        }
+
+        function hideStatus() {
+            document.getElementById("status-section").classList.add("hidden");
+        }
+
+        function showLoading() {
+            document.getElementById("loading-section").classList.remove("hidden");
+            document.getElementById("ingest-btn").disabled = true;
+            document.getElementById("youtube-url").disabled = true;
+        }
+
+        function hideLoading() {
+            document.getElementById("loading-section").classList.add("hidden");
+            document.getElementById("ingest-btn").disabled = false;
+            document.getElementById("youtube-url").disabled = false;
+        }
+
+        function showError(errorMsg) {
+            document.getElementById("error-section").classList.remove("hidden");
+            document.getElementById("error-display").textContent = errorMsg;
+        }
+
+        function hideError() {
+            document.getElementById("error-section").classList.add("hidden");
+        }
+
+        function updateStageIndicators(currentStage) {
+            stages.forEach(stage => {
+                const indicator = document.getElementById(`stage-${stage}`);
+                if (!indicator) return;
+
+                const stageIndex = stages.indexOf(stage);
+                const currentIndex = stages.indexOf(currentStage);
+
+                if (currentIndex > stageIndex) {
+                    // Completed
+                    indicator.className = "w-3 h-3 rounded-full bg-green-500 flex-shrink-0";
+                } else if (currentIndex === stageIndex) {
+                    // Current
+                    indicator.className = "w-3 h-3 rounded-full bg-blue-500 flex-shrink-0 animate-pulse";
+                } else {
+                    // Pending
+                    indicator.className = "w-3 h-3 rounded-full bg-slate-600 flex-shrink-0";
+                }
+            });
+        }
+
+        // ====================================================================
+        // Helpers
+        // ====================================================================
+
+        function isValidYouTubeUrl(url) {
+            const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)\/|^[a-zA-Z0-9_-]{11}$/;
+            return youtubeRegex.test(url);
+        }
+
+        function formatStatus(status) {
+            const statusMap = {
+                "pending": "⏳ Pending",
+                "downloaded": "⬇️ Downloaded",
+                "ingested": "📥 Ingested",
+                "processing": "⚙️ Processing",
+                "completed": "✓ Completed",
+                "failed": "✗ Failed",
+                "queued": "📋 Queued"
+            };
+            return statusMap[status] || status;
+        }
+
+        function formatStage(stage) {
+            const stageMap = {
+                "metadata": "🏷️ Metadata",
+                "download": "⬇️ Download",
+                "frame_extraction": "🎬 Frames",
+                "pose_estimation": "🤸 Pose",
+                "torso_cropping": "✂️ Torso",
+                "jersey_ocr": "👕 Jersey",
+                "rep_extraction": "📊 Reps",
+                "completed": "✓ Complete"
+            };
+            return stageMap[stage] || stage;
+        }
+
+        // ====================================================================
+        // Initialization
+        // ====================================================================
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            // Check API connectivity
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                if (response.ok) {
+                    document.getElementById("api-status").textContent = "Connected";
+                    document.getElementById("api-status").className = "text-green-400";
+                } else {
+                    throw new Error("API not responding");
+                }
+            } catch (error) {
+                document.getElementById("api-status").textContent = "Disconnected";
+                document.getElementById("api-status").className = "text-red-400";
+                console.error("API connection error:", error);
+            }
+
+            // Focus on input
+            document.getElementById("youtube-url").focus();
+        });
+
+        // Allow Enter key to submit
+        document.getElementById("youtube-url").addEventListener("keypress", (e) => {
+            if (e.key === "Enter") {
+                handleIngest();
+            }
+        });
+    </script>
+</body>
+</html>

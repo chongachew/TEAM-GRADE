@@ -1,0 +1,39 @@
+{
+  "position": "OL",
+  "name": "Offensive Line",
+  "features": {
+    "pass_protection": [
+      { "name": "anchorStrength", "source": "biomechanics", "type": "numeric" },
+      { "name": "mirrorTechnique", "source": "tracking_data", "type": "numeric" },
+      { "name": "setDepth", "source": "pose_estimation", "type": "numeric" }
+    ],
+    "run_blocking": [
+      { "name": "legDrive", "source": "biomechanics", "type": "numeric" },
+      { "name": "sustainability", "source": "tracking_data", "type": "numeric" },
+      { "name": "latch", "source": "pose_estimation", "type": "numeric" }
+    ],
+    "hand_usage": [
+      { "name": "strikeAccuracy", "source": "biomechanics", "type": "numeric" },
+      { "name": "handPlacement", "source": "pose_estimation", "type": "numeric" },
+      { "name": "strikeVelocity", "source": "biomechanics", "type": "numeric" }
+    ]
+  },
+  "traits": {
+    "anchor": {
+      "features": ["anchorStrength", "legDrive", "setDepth"],
+      "weights": [0.5, 0.3, 0.2]
+    },
+    "handPlacement": {
+      "features": ["strikeAccuracy", "handPlacement"],
+      "weights": [0.6, 0.4]
+    },
+    "runBlocking": {
+      "features": ["legDrive", "sustainability", "latch"],
+      "weights": [0.4, 0.3, 0.3]
+    }
+  },
+  "weights": {
+    "pass_protection": 0.5,
+    "run_blocking": 0.5
+  }
+}

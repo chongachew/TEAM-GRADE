@@ -1,0 +1,47 @@
+{
+  "position": "QB",
+  "name": "Quarterback",
+  "features": {
+    "mechanics": [
+      { "name": "baseWidth", "source": "pose_estimation", "type": "numeric" },
+      { "name": "hipShoulderSeparation", "source": "pose_estimation", "type": "numeric" },
+      { "name": "releaseTime", "source": "tracking_data", "type": "numeric" }
+    ],
+    "arm_talent": [
+      { "name": "armStrength", "source": "biomechanics", "type": "numeric" },
+      { "name": "touchQuality", "source": "tracking_data", "type": "numeric" }
+    ],
+    "accuracy": [
+      { "name": "ballPlacement", "source": "tracking_data", "type": "numeric" },
+      { "name": "onTimeThrows", "source": "tracking_data", "type": "numeric" }
+    ],
+    "processing": [
+      { "name": "progressionTiming", "source": "tracking_data", "type": "numeric" },
+      { "name": "decisionMaking", "source": "video_analysis", "type": "numeric" }
+    ]
+  },
+  "traits": {
+    "releaseMechanics": {
+      "features": ["releaseTime", "hipShoulderSeparation"],
+      "weights": [0.5, 0.5]
+    },
+    "sequencing": {
+      "features": ["baseWidth", "hipShoulderSeparation"],
+      "weights": [0.4, 0.6]
+    },
+    "progressionTiming": {
+      "features": ["progressionTiming"],
+      "weights": [1.0]
+    },
+    "ballPlacement": {
+      "features": ["ballPlacement", "armStrength"],
+      "weights": [0.6, 0.4]
+    }
+  },
+  "weights": {
+    "mechanics": 0.3,
+    "arm_talent": 0.25,
+    "accuracy": 0.25,
+    "processing": 0.2
+  }
+}
