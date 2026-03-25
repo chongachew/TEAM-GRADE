@@ -1,4 +1,5 @@
 google-cloud-firestore
+firebase-admin
 yt-dlp
 ffmpeg-python
 opencv-python
@@ -7,3 +8,4 @@ pandas
 scikit-learn
 torch
 ultralytics
+mediapipe>=0.10
