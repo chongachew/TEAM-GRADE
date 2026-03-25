@@ -1,0 +1,24 @@
+# Preprocessor dependencies
+# Install with: pip install -r preprocessor/requirements.txt
+
+# Audio analysis
+librosa>=0.10.0
+soundfile>=0.12.1
+
+# Video / frame analysis
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Scene detection
+scenedetect>=0.6.3
+# PyAV backend for scenedetect (faster than OpenCV backend)
+av>=11.0.0
+
+# Firestore
+google-cloud-firestore>=2.13.0
+
+# FFmpeg Python bindings (optional helper; we use subprocess directly)
+ffmpeg-python>=0.2.0
+
+# Type stubs (dev only)
+# types-requests
