@@ -42,7 +42,8 @@ WHISTLE_MAX_DURATION = 2.0      # 2 s maximum (outlier rejection)
 # ---------------------------------------------------------------------------
 ONSET_THRESHOLD = 0.1           # Peak threshold for librosa.onset.onset_detect
 ONSET_DISTANCE = max(1, int(0.3 * AUDIO_SAMPLE_RATE / AUDIO_HOP_LENGTH))
-# Minimum 0.3 s between onset peaks (in frames)
+# Minimum 0.3 s between onset peaks (in frames) — based on the academic finding
+# that a referee cannot physically blow two distinct whistles within 300 ms
 
 # ---------------------------------------------------------------------------
 # Post-processing

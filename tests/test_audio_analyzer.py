@@ -297,7 +297,9 @@ class TestAudioAnalyzerEndToEnd:
     def test_white_noise_robustness(self):
         y = _white_noise(5.0, amplitude=0.05)
         result = self.analyzer.process_audio_chunk(y, SR)
-        high_conf = [e for e in result["events"] if e["confidence"] >= 0.8]
+        # All events for white noise should have low confidence (below 0.8)
+        high_conf_threshold = 0.8
+        high_conf = [e for e in result["events"] if e["confidence"] >= high_conf_threshold]
         assert len(high_conf) == 0, (
             f"White noise should not produce high-confidence events, "
             f"got: {high_conf}"

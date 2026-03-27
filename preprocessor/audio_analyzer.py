@@ -195,7 +195,7 @@ def _fuse_signals(
         if f < n_frames:
             ste_mask[f] = 1.0
 
-    # Normalise onset strength to [0, 1]
+    # Normalize onset strength to [0, 1]
     onset_norm = np.zeros(n_frames, dtype=np.float32)
     if onset_strength.max() > 0:
         vals = onset_strength[:n_frames]
