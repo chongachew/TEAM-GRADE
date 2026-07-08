@@ -116,7 +116,7 @@ class IngestWorker:
 
     def ingest_youtube_url(self, url: str) -> Optional[Dict[str, Any]]:
         """
-        Main ingestion orchestrator: URL → Metadata → Download → Firestore → Queue
+        Simple ingestion: URL → Video ID → Save metadata → Queue first stage
 
         Args:
             url: YouTube URL or video ID
@@ -130,7 +130,7 @@ class IngestWorker:
 
         try:
             # Step 1: Extract video ID
-            logger.info("Step 1/5: Extracting video ID...")
+            logger.info("Step 1/3: Extracting video ID...")
             video_id = self.metadata_extractor.get_video_id(url)
 
             if not video_id:
@@ -146,85 +146,56 @@ class IngestWorker:
                     logger.warning(f"Video already ingested: {video_id}")
                     return self._result(False, "Video already ingested", video_id)
 
-            # Step 3: Fetch and parse metadata
-            logger.info("Step 2/5: Fetching metadata...")
-            yt_metadata = self.downloader.get_video_info(url)
-
-            if not yt_metadata:
-                logger.error("[FAIL] Failed to fetch video metadata")
-                return self._result(False, "Failed to fetch metadata", video_id)
-
-            logger.info(f"[OK] Got video info: {yt_metadata['title'][:60]}...")
-
-            # Parse football-specific metadata
-            logger.info("Step 3/5: Parsing football metadata...")
-            football_metadata = self.metadata_extractor.parse_football_metadata(
-                title=yt_metadata.get("title", ""),
-                description=yt_metadata.get("description", ""),
-                video_id=video_id
-            )
-
-            logger.info(f"  Teams: {football_metadata.get('team1')} vs {football_metadata.get('team2')}")
-            logger.info(f"  Year: {football_metadata.get('year')}")
-            logger.info(f"  Level: {football_metadata.get('level')}")
-
-            # Combined metadata
-            full_metadata = {**yt_metadata, **football_metadata}
-
-            # Step 4: Download video
-            logger.info("Step 4/5: Downloading video...")
-            video_path = self.downloader.download_video(url)
-
-            if not video_path:
-                logger.error("[FAIL] Failed to download video")
-                self._save_metadata_only(video_id, full_metadata)
-                return self._result(False, "Download failed", video_id)
-
-            logger.info(f"[OK] Downloaded to: {video_path}")
-            full_metadata["download_path"] = str(video_path)
-            full_metadata["file_size_mb"] = video_path.stat().st_size / (1024 * 1024)
-
-            # Step 5: Save to Firestore and queue
-            logger.info("Step 5/5: Saving to Firestore and queueing...")
-
+            # Step 2: Save basic metadata and queue
+            logger.info("Step 2/3: Saving metadata and queuing...")
+            
             if self.firestore:
-                # Save metadata
-                if not self.firestore.save_video_metadata(video_id, full_metadata):
+                # Basic metadata (don't download yet)
+                basic_metadata = {
+                    "video_url": url,
+                    "video_id": video_id,
+                    "status": "pending",
+                    "timestamp": datetime.now().isoformat(),
+                    "stages": {
+                        stage: {"status": "pending"}
+                        for stage in ["metadata", "download", "frame_extraction", "pose_detection",
+                                    "torso_crop", "jersey_ocr", "rep_extraction", "biomechanics", "complete"]
+                    },
+                }
+                
+                # Save video record
+                if not self.firestore.save_video_metadata(video_id, basic_metadata):
                     logger.error("[FAIL] Failed to save metadata")
                     return self._result(False, "Firestore save failed", video_id)
-
-                # Add to queue
+                
+                logger.info(f"[OK] Saved video metadata for {video_id}")
+                
+                # Queue metadata stage to be processed by worker
                 from .firestore_client import IngestStage
                 if not self.queue_manager.enqueue_video(
                     video_id,
-                    stage=IngestStage.FRAME_EXTRACTION.value,  # Start after download
-                    priority=5
+                    stage=IngestStage.METADATA.value,
+                    priority=5,
+                    metadata={"source": "ingest_worker"}
                 ):
                     logger.error("[FAIL] Failed to queue video")
                     return self._result(False, "Queue failed", video_id)
-
-                logger.info("[OK] Saved to Firestore and queued")
+                
+                logger.info(f"[OK] Queued {video_id} for processing")
+                
+                # Success
+                return self._result(
+                    True,
+                    "Success",
+                    video_id,
+                    extra={
+                        "queued_stage": "metadata",
+                        "download_will_happen_in_pipeline": True
+                    }
+                )
             else:
-                logger.warning("[WARN] Firestore not available, skipping queue")
-
-            # Success!
-            result = self._result(
-                True,
-                "Success",
-                video_id,
-                extra={
-                    "file_size_mb": full_metadata.get("file_size_mb"),
-                    "teams": f"{football_metadata.get('team1')} vs {football_metadata.get('team2')}",
-                    "download_path": str(video_path),
-                }
-            )
-
-            logger.info("\n" + "=" * 60)
-            logger.info("[OK] Ingestion completed successfully")
-            logger.info(f"Video ID: {video_id}")
-            logger.info("=" * 60 + "\n")
-
-            return result
+                logger.error("[FAIL] Firestore not initialized")
+                return self._result(False, "Firestore unavailable", video_id)
 
         except Exception as e:
             logger.error(f"[FAIL] Ingestion failed: {e}", exc_info=True)

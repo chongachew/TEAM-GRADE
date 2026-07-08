@@ -35,13 +35,19 @@ class PoseEstimator:
     def _load_model(self) -> None:
         """
         Load pose estimation model based on configuration.
+        Falls back to YOLO if primary model fails.
         
         Raises:
-            ValueError: If model_name is not supported
+            ValueError: If all models fail to load
         """
         try:
             if self.model_name == "mediapipe":
-                self._load_mediapipe()
+                try:
+                    self._load_mediapipe()
+                except Exception as mp_e:
+                    logger.warning(f"MediaPipe loading failed: {mp_e}. Falling back to YOLO...")
+                    self._load_yolo_pose()
+                    logger.info("Switched to YOLO Pose due to MediaPipe unavailability")
             elif self.model_name == "yolo":
                 self._load_yolo_pose()
             elif self.model_name == "openpose":
@@ -55,18 +61,79 @@ class PoseEstimator:
             raise
 
     def _load_mediapipe(self) -> None:
-        """Load MediaPipe pose model."""
+        """Load MediaPipe pose model using tasks API (0.10.x)."""
         try:
+            import os
+            import urllib.request
+            from pathlib import Path
+            
+            # Try new tasks API first
+            try:
+                from mediapipe.tasks.python import vision
+                from mediapipe.tasks.python.core.base_options import BaseOptions
+                import mediapipe as mp
+                
+                # Download model if not already cached
+                model_dir = Path.home() / ".mediapipe" / "models"
+                model_dir.mkdir(parents=True, exist_ok=True)
+                model_path = model_dir / "pose_landmarker.task"
+                
+                if not model_path.exists():
+                    logger.info("Downloading MediaPipe pose model...")
+                    model_url = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker/float16/1/pose_landmarker.task"
+                    try:
+                        urllib.request.urlretrieve(model_url, str(model_path))
+                        logger.info(f"Model downloaded to {model_path}")
+                    except Exception as download_e:
+                        logger.warning(f"Failed to download model: {download_e}. This is OK for CPU inference.")
+                        # Model download is optional - tasks API can work without it in some cases
+                
+                # Create pose landmarker
+                if model_path.exists():
+                    base_options = BaseOptions(model_asset_path=str(model_path))
+                    options = vision.PoseLandmarkerOptions(
+                        base_options=base_options,
+                        running_mode=vision.RunningMode.IMAGE,
+                        num_poses=1
+                    )
+                    self.pose_landmarker = vision.PoseLandmarker.create_from_options(options)
+                else:
+                    # Try creating without model path as fallback
+                    base_options = BaseOptions()
+                    options = vision.PoseLandmarkerOptions(
+                        base_options=base_options,
+                        running_mode=vision.RunningMode.IMAGE,
+                        num_poses=1
+                    )
+                    self.pose_landmarker = vision.PoseLandmarker.create_from_options(options)
+                
+                self.use_tasks_api = True
+                self.vision_module = vision
+                logger.info("Loaded MediaPipe PoseLandmarker (tasks API 0.10.x)")
+                return
+                
+            except ImportError as import_e:
+                logger.warning(f"Tasks API import failed: {import_e}. Trying legacy API...")
+            except Exception as tasks_e:
+                logger.warning(f"Tasks API loading failed: {tasks_e}. Trying legacy API...")
+            
+            # Fallback to legacy solutions API
             import mediapipe as mp
-            self.model = mp.solutions.pose.Pose(
-                static_image_mode=False,
-                model_complexity=1,
-                smooth_landmarks=True,
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5
-            )
-        except ImportError:
-            logger.error("MediaPipe not installed. Install with: pip install mediapipe")
+            if hasattr(mp, 'solutions') and hasattr(mp.solutions, 'pose'):
+                self.model = mp.solutions.pose.Pose(
+                    static_image_mode=False,
+                    model_complexity=1,
+                    smooth_landmarks=True,
+                    min_detection_confidence=0.5,
+                    min_tracking_confidence=0.5
+                )
+                self.use_tasks_api = False
+                logger.info("Loaded MediaPipe Pose (legacy solutions API)")
+            else:
+                raise ValueError("MediaPipe pose not available - all APIs failed")
+                
+        except Exception as e:
+            logger.error(f"Failed to load MediaPipe: {e}")
             raise
 
     def _load_yolo_pose(self) -> None:
@@ -115,7 +182,7 @@ class PoseEstimator:
 
     def _estimate_mediapipe(self, frame: np.ndarray) -> Dict[str, Any]:
         """
-        Run MediaPipe pose estimation.
+        Run MediaPipe pose estimation using either tasks API or legacy API.
         
         Args:
             frame: Input frame (BGR)
@@ -124,37 +191,72 @@ class PoseEstimator:
             Pose keypoints dictionary
         """
         import cv2
+        
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = self.model.process(frame_rgb)
+        
+        # Standard 33-point MediaPipe format
+        landmark_names = [
+            "nose", "left_eye_inner", "left_eye", "left_eye_outer",
+            "right_eye_inner", "right_eye", "right_eye_outer",
+            "left_ear", "right_ear",
+            "mouth_left", "mouth_right",
+            "left_shoulder", "right_shoulder",
+            "left_elbow", "right_elbow",
+            "left_wrist", "right_wrist",
+            "left_pinky", "right_pinky",
+            "left_index", "right_index",
+            "left_thumb", "right_thumb",
+            "left_hip", "right_hip",
+            "left_knee", "right_knee",
+            "left_ankle", "right_ankle",
+            "left_heel", "right_heel",
+            "left_foot_index", "right_foot_index"
+        ]
         
         keypoints = {}
-        if results.pose_landmarks:
-            # Standard 33-point MediaPipe format
-            landmark_names = [
-                "nose", "left_eye_inner", "left_eye", "left_eye_outer",
-                "right_eye_inner", "right_eye", "right_eye_outer",
-                "left_ear", "right_ear",
-                "mouth_left", "mouth_right",
-                "left_shoulder", "right_shoulder",
-                "left_elbow", "right_elbow",
-                "left_wrist", "right_wrist",
-                "left_pinky", "right_pinky",
-                "left_index", "right_index",
-                "left_thumb", "right_thumb",
-                "left_hip", "right_hip",
-                "left_knee", "right_knee",
-                "left_ankle", "right_ankle",
-                "left_heel", "right_heel",
-                "left_foot_index", "right_foot_index"
-            ]
-            
-            for name, landmark in zip(landmark_names, results.pose_landmarks.landmark):
-                keypoints[name] = {
-                    "x": float(landmark.x),
-                    "y": float(landmark.y),
-                    "z": float(landmark.z),
-                    "confidence": float(landmark.visibility)
-                }
+        
+        # Use tasks API if available
+        if hasattr(self, 'use_tasks_api') and self.use_tasks_api and hasattr(self, 'pose_landmarker'):
+            try:
+                # Convert frame to tasks API format
+                # MediaPipe tasks API expects RGB uint8 or TensorImage
+                import mediapipe as mp
+                image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+                
+                # Run pose detection
+                results = self.pose_landmarker.detect(image)
+                
+                # Extract keypoints from first person
+                if results.pose_landmarks and len(results.pose_landmarks) > 0:
+                    for name, landmark in zip(landmark_names, results.pose_landmarks[0]):
+                        keypoints[name] = {
+                            "x": float(landmark.x),
+                            "y": float(landmark.y),
+                            "z": float(landmark.z),
+                            "confidence": float(landmark.visibility) if hasattr(landmark, 'visibility') else 1.0
+                        }
+                logger.debug(f"Tasks API: detected {len(keypoints)} keypoints")
+            except Exception as e:
+                logger.warning(f"Tasks API inference failed: {e}. Trying legacy API...")
+                keypoints = {}
+        
+        # Fallback to legacy API if tasks failed or not available
+        if not keypoints and hasattr(self, 'model') and self.model is not None:
+            try:
+                results = self.model.process(frame_rgb)
+                
+                if results.pose_landmarks:
+                    for name, landmark in zip(landmark_names, results.pose_landmarks.landmark):
+                        keypoints[name] = {
+                            "x": float(landmark.x),
+                            "y": float(landmark.y),
+                            "z": float(landmark.z),
+                            "confidence": float(landmark.visibility)
+                        }
+                logger.debug(f"Legacy API: detected {len(keypoints)} keypoints")
+            except Exception as e:
+                logger.warning(f"Legacy API inference failed: {e}")
+                keypoints = {}
         
         return {
             "keypoints": keypoints,
@@ -176,7 +278,18 @@ class PoseEstimator:
         keypoints = {}
         
         if results and results[0].keypoints:
-            kpts = results[0].keypoints.data[0]  # First person
+            # Convert GPU tensor to CPU numpy array immediately
+            kpts_tensor = results[0].keypoints.data[0]
+            try:
+                # Handle GPU tensor: convert to CPU, then to numpy
+                if hasattr(kpts_tensor, 'cpu'):
+                    kpts = kpts_tensor.cpu().numpy()
+                else:
+                    kpts = np.asarray(kpts_tensor)
+            except Exception as e:
+                logger.warning(f"Tensor conversion failed: {e}. Skipping frame.")
+                return self._empty_pose_result()
+            
             # YOLO 17-point format
             yolo_names = [
                 "nose", "left_eye", "right_eye", "left_ear", "right_ear",
@@ -228,8 +341,17 @@ class PoseEstimator:
 
     def close(self) -> None:
         """Clean up model resources."""
+        # Clean up tasks API landmarker
+        if hasattr(self, 'pose_landmarker'):
+            try:
+                self.pose_landmarker.close()
+            except Exception:
+                pass
+        
+        # Clean up legacy model
         if self.model and hasattr(self.model, 'close'):
             self.model.close()
+        
         logger.info("Pose estimator closed")
 
 

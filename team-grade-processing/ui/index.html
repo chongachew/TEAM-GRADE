@@ -92,7 +92,7 @@
                                 <span class="text-slate-300 text-sm">Download</span>
                             </div>
                             <div class="flex items-center gap-3">
-                                <div id="stage-frame" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
+                                <div id="stage-frame_extraction" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
                                 <span class="text-slate-300 text-sm">Frame Extraction</span>
                             </div>
                             <div class="flex items-center gap-3">
@@ -100,20 +100,24 @@
                                 <span class="text-slate-300 text-sm">Pose Estimation</span>
                             </div>
                             <div class="flex items-center gap-3">
-                                <div id="stage-torso" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
+                                <div id="stage-torso_crop" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
                                 <span class="text-slate-300 text-sm">Torso Cropping</span>
                             </div>
                             <div class="flex items-center gap-3">
-                                <div id="stage-jersey" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
+                                <div id="stage-jersey_ocr" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
                                 <span class="text-slate-300 text-sm">Jersey OCR</span>
                             </div>
                             <div class="flex items-center gap-3">
-                                <div id="stage-rep" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
+                                <div id="stage-rep_extraction" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
                                 <span class="text-slate-300 text-sm">Rep Extraction</span>
                             </div>
                             <div class="flex items-center gap-3">
-                                <div id="stage-completed" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
-                                <span class="text-slate-300 text-sm">Completed</span>
+                                <div id="stage-biomechanics" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
+                                <span class="text-slate-300 text-sm">Biomechanics Analysis</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <div id="stage-complete" class="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0"></div>
+                                <span class="text-slate-300 text-sm">Pipeline Complete</span>
                             </div>
                         </div>
                     </div>
@@ -175,11 +179,12 @@
             "metadata",
             "download",
             "frame_extraction",
-            "pose_estimation",
-            "torso_cropping",
+            "pose",
+            "torso_crop",
             "jersey_ocr",
             "rep_extraction",
-            "completed"
+            "biomechanics",
+            "complete"
         ];
 
         // ====================================================================
@@ -204,12 +209,12 @@
             showLoading();
 
             try {
-                const response = await fetch(`${API_URL}/ingest`, {
+                const response = await fetch(`${API_URL}/api/ingest`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json"
                     },
-                    body: JSON.stringify({ url: urlInput })
+                    body: JSON.stringify({ video_url: urlInput })
                 });
 
                 if (!response.ok) {
@@ -237,7 +242,7 @@
 
         async function updateStatusDisplay(videoId) {
             try {
-                const response = await fetch(`${API_URL}/status/${videoId}`);
+                const response = await fetch(`${API_URL}/api/ingest/${videoId}/status`);
 
                 if (!response.ok) {
                     throw new Error("Failed to fetch status");
@@ -390,11 +395,12 @@
                 "metadata": "🏷️ Metadata",
                 "download": "⬇️ Download",
                 "frame_extraction": "🎬 Frames",
-                "pose_estimation": "🤸 Pose",
-                "torso_cropping": "✂️ Torso",
+                "pose": "🤸 Pose",
+                "torso_crop": "✂️ Torso",
                 "jersey_ocr": "👕 Jersey",
                 "rep_extraction": "📊 Reps",
-                "completed": "✓ Complete"
+                "biomechanics": "🔬 Biomechanics",
+                "complete": "✓ Complete"
             };
             return stageMap[stage] || stage;
         }
@@ -406,7 +412,7 @@
         document.addEventListener("DOMContentLoaded", async () => {
             // Check API connectivity
             try {
-                const response = await fetch(`${API_URL}/health`);
+                const response = await fetch(`${API_URL}/api/health`);
                 if (response.ok) {
                     document.getElementById("api-status").textContent = "Connected";
                     document.getElementById("api-status").className = "text-green-400";

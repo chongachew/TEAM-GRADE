@@ -68,7 +68,8 @@ class YouTubeDownloader:
         self,
         url: str,
         output_path: Optional[Path] = None,
-        max_retries: int = 3
+        max_retries: int = 3,
+        format_spec: str = None
     ) -> Optional[Path]:
         """
         Download video from YouTube URL.
@@ -77,6 +78,7 @@ class YouTubeDownloader:
             url: YouTube URL or video ID
             output_path: Custom output path (default: auto-generated in output_dir)
             max_retries: Maximum retry attempts
+            format_spec: yt-dlp format specification (default: best[ext=mp4])
 
         Returns:
             Path to downloaded file or None if failed
@@ -114,9 +116,12 @@ class YouTubeDownloader:
         logger.info(f"Starting download from {url}")
         logger.info(f"Output path: {output_path}")
 
+        # ✅ OPTIMIZATION: Use adaptive format if provided (Phase 2 #5)
+        optimal_format = format_spec or "best[ext=mp4]"  # Default to best if not specified
+        
         # Configure yt-dlp options
         ydl_opts = {
-            "format": "best[ext=mp4]",  # Best quality MP4
+            "format": optimal_format,  # Adaptive quality or best quality MP4
             "outtmpl": str(output_path),
             "quiet": False,
             "no_warnings": False,

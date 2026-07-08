@@ -1,0 +1,70 @@
+name: Python Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'team-grade-processing/**'
+      - 'requirements.txt'
+      - '.github/workflows/python-tests.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'team-grade-processing/**'
+      - 'requirements.txt'
+      - '.github/workflows/python-tests.yml'
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      working-directory: ./team-grade-processing
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r ../requirements.txt
+        pip install pytest pytest-cov pytest-asyncio
+
+    - name: Run Validator Tests
+      working-directory: ./team-grade-processing
+      run: |
+        pytest tests/test_validators.py -v --tb=short
+
+    - name: Run Exception Tests
+      working-directory: ./team-grade-processing
+      run: |
+        pytest tests/test_exceptions.py -v --tb=short
+
+    - name: Run Simplified Endpoint Tests
+      working-directory: ./team-grade-processing
+      run: |
+        pytest tests/test_endpoints_simplified.py -v --tb=short
+
+    - name: Generate Coverage Report
+      working-directory: ./team-grade-processing
+      run: |
+        pytest tests/test_endpoints_simplified.py tests/test_exceptions.py tests/test_validators.py \
+          --cov=api --cov=ingest --cov-report=xml --cov-report=term-missing
+
+    - name: Upload Coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./team-grade-processing/coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+        verbose: true

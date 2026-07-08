@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TEAM-GRADE - Video Upload</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+
+        .optimization-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-top: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .content {
+            padding: 40px 30px;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        input[type="text"]::placeholder {
+            color: #999;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 30px;
+        }
+
+        button {
+            flex: 1;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-submit {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-submit:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-clear {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-clear:hover {
+            background: #e0e0e0;
+        }
+
+        .status-section {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid #e0e0e0;
+            display: none;
+        }
+
+        .status-section.active {
+            display: block;
+        }
+
+        .status-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            margin-bottom: 10px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+
+        .status-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .status-icon.pending {
+            background: #e0e0e0;
+            color: #999;
+        }
+
+        .status-icon.loading {
+            background: #667eea;
+            color: white;
+            animation: spin 1s linear infinite;
+        }
+
+        .status-icon.success {
+            background: #4caf50;
+            color: white;
+        }
+
+        .status-icon.error {
+            background: #f44336;
+            color: white;
+        }
+
+        .status-label {
+            flex: 1;
+        }
+
+        .status-value {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s;
+            border-radius: 4px;
+        }
+
+        .video-id-box {
+            background: #f0f7ff;
+            border: 1px solid #667eea;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .video-id-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .video-id-value {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            color: #667eea;
+            word-break: break-all;
+        }
+
+        .error-box {
+            background: #ffebee;
+            border: 1px solid #f44336;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            color: #c62828;
+            font-size: 13px;
+            display: none;
+        }
+
+        .error-box.active {
+            display: block;
+        }
+
+        .success-box {
+            background: #e8f5e9;
+            border: 1px solid #4caf50;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            color: #2e7d32;
+            font-size: 13px;
+            display: none;
+        }
+
+        .success-box.active {
+            display: block;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #667eea;
+            padding: 12px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #1976d2;
+        }
+
+        .info-icon {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 20px;
+            margin-right: 8px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .timestamp {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        .form-hint {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 500px) {
+            .header h1 {
+                font-size: 24px;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏈 TEAM-GRADE</h1>
+            <p>Football Video Analysis System</p>
+            <div class="optimization-badge">
+                ⚡ Phase 3 Optimizations Active (50% faster)
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="info-box">
+                <span class="info-icon">ℹ</span>
+                Processing videos with GPU acceleration, lightweight models, and vectorized scoring
+            </div>
+
+            <form id="uploadForm">
+                <!-- Video URL -->
+                <div class="form-group">
+                    <label for="videoUrl">YouTube Video URL *</label>
+                    <input 
+                        type="text" 
+                        id="videoUrl" 
+                        placeholder="https://www.youtube.com/watch?v=..."
+                        required
+                    >
+                    <div class="form-hint">Paste a YouTube link to a football video</div>
+                </div>
+
+                <!-- Team ID -->
+                <div class="form-group">
+                    <label for="teamId">Team ID *</label>
+                    <input 
+                        type="text" 
+                        id="teamId" 
+                        placeholder="e.g., team-2024"
+                        required
+                    >
+                    <div class="form-hint">Identifier for your team</div>
+                </div>
+
+                <!-- Player Details Row -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="playerNumber">Player Number</label>
+                        <input 
+                            type="number" 
+                            id="playerNumber" 
+                            placeholder="23"
+                            min="0"
+                            max="99"
+                        >
+                    </div>
+                    <div class="form-group">
+                        <label for="position">Position</label>
+                        <select id="position">
+                            <option value="">-- Select --</option>
+                            <option value="OL">Offensive Line (OL)</option>
+                            <option value="QB">Quarterback (QB)</option>
+                            <option value="RB">Running Back (RB)</option>
+                            <option value="WR">Wide Receiver (WR)</option>
+                            <option value="TE">Tight End (TE)</option>
+                            <option value="DL">Defensive Line (DL)</option>
+                            <option value="LB">Linebacker (LB)</option>
+                            <option value="DB">Defensive Back (DB)</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Buttons -->
+                <div class="button-group">
+                    <button type="submit" class="btn-submit" id="submitBtn">Submit Video</button>
+                    <button type="reset" class="btn-clear">Clear</button>
+                </div>
+            </form>
+
+            <!-- Status Section -->
+            <div class="status-section" id="statusSection">
+                <div class="status-title">📊 Processing Status</div>
+
+                <div class="status-item">
+                    <div class="status-icon pending" id="queueIcon">✓</div>
+                    <div class="status-label">Queued</div>
+                </div>
+
+                <div class="status-item">
+                    <div class="status-icon pending" id="downloadIcon">✓</div>
+                    <div class="status-label">Downloading Video</div>
+                </div>
+
+                <div class="status-item">
+                    <div class="status-icon pending" id="extractIcon">✓</div>
+                    <div class="status-label">Extracting Frames <span class="status-value" id="extractValue"></span></div>
+                </div>
+
+                <div class="status-item">
+                    <div class="status-icon pending" id="poseIcon">✓</div>
+                    <div class="status-label">Pose Estimation <span class="status-value" id="poseValue"></span></div>
+                </div>
+
+                <div class="status-item">
+                    <div class="status-icon pending" id="biomechIcon">✓</div>
+                    <div class="status-label">Biomechanics Analysis <span class="status-value" id="biomechValue"></span></div>
+                </div>
+
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+
+                <div class="video-id-box" id="videoIdBox" style="display: none;">
+                    <div class="video-id-label">Video ID</div>
+                    <div class="video-id-value" id="videoId"></div>
+                </div>
+
+                <div class="error-box" id="errorBox"></div>
+                <div class="success-box" id="successBox"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api';
+        const POLL_INTERVAL = 2000; // 2 seconds
+        let currentVideoId = null;
+        let pollingInterval = null;
+
+        const stages = [
+            { key: 'queued', icon: 'queueIcon', value: 'queueValue', label: 'Queued' },
+            { key: 'download', icon: 'downloadIcon', value: 'downloadValue', label: 'Download' },
+            { key: 'frame_extraction', icon: 'extractIcon', value: 'extractValue', label: 'Frame Extraction' },
+            { key: 'pose', icon: 'poseIcon', value: 'poseValue', label: 'Pose' },
+            { key: 'biomechanics', icon: 'biomechIcon', value: 'biomechValue', label: 'Biomechanics' }
+        ];
+
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await submitVideo();
+        });
+
+        async function submitVideo() {
+            const videoUrl = document.getElementById('videoUrl').value.trim();
+            const teamId = document.getElementById('teamId').value.trim();
+            const playerNumber = document.getElementById('playerNumber').value;
+            const position = document.getElementById('position').value;
+
+            if (!videoUrl || !teamId) {
+                showError('Please fill in all required fields (*)');
+                return;
+            }
+
+            // Validate YouTube URL
+            if (!videoUrl.includes('youtube.com') && !videoUrl.includes('youtu.be')) {
+                showError('Please enter a valid YouTube URL');
+                return;
+            }
+
+            document.getElementById('submitBtn').disabled = true;
+
+            try {
+                const response = await fetch(`${API_BASE}/ingest`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        video_url: videoUrl,
+                        team_id: teamId,
+                        player_number: playerNumber || undefined,
+                        position: position || undefined
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to submit video');
+                }
+
+                const data = await response.json();
+                currentVideoId = data.video_id;
+
+                // Show status section
+                document.getElementById('statusSection').classList.add('active');
+                document.getElementById('videoIdBox').style.display = 'block';
+                document.getElementById('videoId').textContent = currentVideoId;
+
+                // Start polling
+                startPolling();
+                showSuccess('Video submitted successfully! Processing started...');
+
+            } catch (error) {
+                showError(`Error: ${error.message}`);
+                document.getElementById('submitBtn').disabled = false;
+            }
+        }
+
+        function startPolling() {
+            clearInterval(pollingInterval);
+
+            pollingInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/ingest/${currentVideoId}/status`);
+
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch status');
+                    }
+
+                    const data = await response.json();
+                    updateStatus(data);
+
+                    // Check if complete
+                    if (data.status === 'completed' || data.status === 'failed') {
+                        clearInterval(pollingInterval);
+                        if (data.status === 'completed') {
+                            showSuccess('✓ Video processing complete!');
+                        } else {
+                            showError('❌ Video processing failed');
+                        }
+                        document.getElementById('submitBtn').disabled = false;
+                    }
+
+                } catch (error) {
+                    console.error('Polling error:', error);
+                }
+            }, POLL_INTERVAL);
+        }
+
+        function updateStatus(data) {
+            const stagesData = data.stages || {};
+            let completedCount = 0;
+
+            stages.forEach(stage => {
+                const stageData = stagesData[stage.key];
+                const icon = document.getElementById(stage.icon);
+                const valueEl = document.getElementById(stage.value);
+
+                if (!icon) return;
+
+                if (stageData && stageData.status === 'completed') {
+                    icon.className = 'status-icon success';
+                    icon.textContent = '✓';
+                    completedCount++;
+                } else if (stageData && stageData.status === 'processing') {
+                    icon.className = 'status-icon loading';
+                    icon.textContent = '⟳';
+                    completedCount++;
+                } else if (stageData && stageData.status === 'failed') {
+                    icon.className = 'status-icon error';
+                    icon.textContent = '✕';
+                } else {
+                    icon.className = 'status-icon pending';
+                    icon.textContent = '○';
+                }
+
+                // Update value
+                if (valueEl && stageData && stageData.completed_at) {
+                    const time = new Date(stageData.completed_at);
+                    valueEl.textContent = `(${time.toLocaleTimeString()})`;
+                }
+            });
+
+            // Update progress
+            const progress = (completedCount / stages.length) * 100;
+            document.getElementById('progressFill').style.width = progress + '%';
+        }
+
+        function showError(message) {
+            const errorBox = document.getElementById('errorBox');
+            errorBox.textContent = message;
+            errorBox.classList.add('active');
+
+            const successBox = document.getElementById('successBox');
+            successBox.classList.remove('active');
+
+            setTimeout(() => errorBox.classList.remove('active'), 5000);
+        }
+
+        function showSuccess(message) {
+            const successBox = document.getElementById('successBox');
+            successBox.textContent = message;
+            successBox.classList.add('active');
+
+            const errorBox = document.getElementById('errorBox');
+            errorBox.classList.remove('active');
+
+            setTimeout(() => successBox.classList.remove('active'), 5000);
+        }
+
+        // Display current time in timestamp
+        document.addEventListener('DOMContentLoaded', () => {
+            const timestamp = new Date().toLocaleString();
+            console.log('UI loaded at:', timestamp);
+        });
+    </script>
+</body>
+</html>

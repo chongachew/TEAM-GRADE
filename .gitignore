@@ -1,4 +1,11 @@
 node_modules
+__pycache__/
+*.pyc
+*.log
+launch/build/
+launch/dist/
+yolov8n-pose.pt
+raw_videos/
 
 # Secrets / credentials — never commit
 credentials/

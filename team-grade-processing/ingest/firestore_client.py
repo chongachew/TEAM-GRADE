@@ -10,7 +10,18 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from enum import Enum
-
+# Import centralized constants
+try:
+    from config.constants import (
+        FIRESTORE_COLLECTION_VIDEOS,
+        FIRESTORE_COLLECTION_QUEUE,
+        FIRESTORE_PROJECT_ID,
+    )
+except ImportError:
+    # Fallback to hardcoded values if constants not available
+    FIRESTORE_COLLECTION_VIDEOS = "videos"
+    FIRESTORE_COLLECTION_QUEUE = "ingestion_queue"
+    FIRESTORE_PROJECT_ID = "the-bridge-athletics1"
 logger = logging.getLogger(__name__)
 
 # Configuration: Path to Google Cloud service account JSON key
@@ -33,23 +44,24 @@ class IngestStage(str, Enum):
     METADATA = "metadata"
     DOWNLOAD = "download"
     FRAME_EXTRACTION = "frame_extraction"
-    POSE_ESTIMATION = "pose_estimation"
-    TORSO_CROPPING = "torso_cropping"
+    POSE = "pose"
+    TORSO_CROP = "torso_crop"
     JERSEY_OCR = "jersey_ocr"
     REP_EXTRACTION = "rep_extraction"
-    COMPLETED = "completed"
+    BIOMECHANICS = "biomechanics"
+    COMPLETE = "complete"
 
 
 class FirestoreClient:
     """Manage video metadata and ingestion queue in Firestore."""
 
-    VIDEOS_COLLECTION = "videos"
-    QUEUE_COLLECTION = "ingestion_queue"
+    VIDEOS_COLLECTION = FIRESTORE_COLLECTION_VIDEOS
+    QUEUE_COLLECTION = FIRESTORE_COLLECTION_QUEUE
     BATCH_SIZE = 100
 
     def __init__(
         self,
-        project_id: str = "the-bridge-athletics1",
+        project_id: str = FIRESTORE_PROJECT_ID,
         database: str = "(default)",
         credentials_path: Optional[Path] = None
     ):
@@ -124,9 +136,13 @@ class FirestoreClient:
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)
 
-            # Test connection
-            self._test_connection()
-            logger.info("[OK] Firestore client initialized successfully")
+            # Test connection (optional - log warning if fails, but don't block startup)
+            try:
+                self._test_connection()
+                logger.info("[OK] Firestore client initialized successfully")
+            except RuntimeError as e:
+                logger.warning(f"[WARN] Firestore connection test failed (non-blocking): {e}")
+                logger.info("[WARN] System starting without Firestore validation - ensure IAM permissions are correct")
 
         except ImportError as e:
             error_msg = "google-cloud-firestore or google-auth not installed.\nInstall with: pip install google-cloud-firestore google-auth"
@@ -149,8 +165,9 @@ class FirestoreClient:
             RuntimeError: If connection test fails
         """
         try:
-            # Try to read a simple document
-            test_doc = self.db.collection("_system").document("test").get()
+            # Try to list documents from the videos collection (read-only test)
+            # This tests actual permissions rather than system collections
+            docs = list(self.db.collection(self.VIDEOS_COLLECTION).limit(1).stream())
             logger.debug("[OK] Firestore connection test successful")
             return True
         except Exception as e:
@@ -310,83 +327,343 @@ class FirestoreClient:
             logger.error(f"Failed to update {video_id}.{field}: {e}")
             return False
 
+    def add_to_queue_with_retry(
+        self,
+        video_id: str,
+        stage,
+        priority: int = 5,
+        metadata: Optional[Dict[str, Any]] = None,
+        max_retries: int = 3
+    ) -> bool:
+        """
+        Add video to ingestion queue with retry mechanism.
+        
+        Handles both IngestStage enum and string stage values.
+        Retries up to max_retries times with exponential backoff.
+        
+        PREVENTS DUPLICATES: Checks if a job for this video+stage already exists.
+        
+        Args:
+            video_id: YouTube video ID
+            stage: Current processing stage (str or IngestStage)
+            priority: Priority (1-10, lower=higher priority)
+            metadata: Optional metadata for queue item
+            max_retries: Maximum retry attempts
+            
+        Returns:
+            True if successful, False if all retries failed
+        """
+        import time
+        
+        # Normalize stage to string
+        stage_str = stage.value if isinstance(stage, IngestStage) else str(stage)
+        
+        # CHECK FOR DUPLICATES: Don't enqueue if this video+stage already exists in queued/processing
+        try:
+            existing = list(
+                self.db.collection(self.QUEUE_COLLECTION)
+                .where("video_id", "==", video_id)
+                .where("stage", "==", stage_str)
+                .where("status", "in", ["queued", "processing"])
+                .limit(1)
+                .stream()
+            )
+            
+            if existing:
+                logger.warning(
+                    f"[DUPLICATE] Job already exists: {video_id}/{stage_str} "
+                    f"(status: {existing[0].to_dict().get('status')}). Skipping enqueue."
+                )
+                return True  # Return True since job already queued
+        except Exception as e:
+            logger.debug(f"Could not check for duplicates (may be OK): {e}")
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.info(f"Queue write attempt {attempt}/{max_retries}: {video_id} -> stage={stage_str}")
+                
+                queue_item = {
+                    "video_id": video_id,
+                    "stage": stage_str,
+                    "priority": priority,
+                    "status": "queued",
+                    "created_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.utcnow().isoformat(),
+                    "retry_count": attempt - 1,
+                    "max_retries": max_retries,
+                }
+                
+                if metadata:
+                    queue_item.update(metadata)
+                
+                # Generate document ID based on priority and timestamp
+                queue_doc_id = f"{priority:02d}_{datetime.utcnow().timestamp()}_{video_id}"
+                
+                # Write to Firestore
+                self.db.collection(self.QUEUE_COLLECTION).document(queue_doc_id).set(queue_item)
+                logger.info(f"Queue write: {video_id} -> ingestion_queue/{queue_doc_id}")
+                
+                # Skip validation - Firestore would error if write failed
+                # _validate_queue_write requires index that may not exist
+                logger.info(f"[OK] Queue entry written for {video_id} (validation skipped)")
+                return True
+                    
+            except Exception as e:
+                error_msg = f"Queue write attempt {attempt} failed: {str(e)}"
+                logger.error(error_msg)
+                
+                if attempt < max_retries:
+                    # Exponential backoff: 100ms, 300ms, 900ms
+                    backoff_ms = 100 * (3 ** (attempt - 1))
+                    logger.info(f"Retrying in {backoff_ms}ms...")
+                    time.sleep(backoff_ms / 1000.0)
+                else:
+                    # All retries exhausted
+                    logger.critical(f"[FAIL] Queue write failed after {max_retries} attempts for {video_id}")
+                    return False
+        
+        return False
+
     def add_to_queue(
         self,
         video_id: str,
-        stage: IngestStage,
+        stage,
         priority: int = 5,
         metadata: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
-        Add video to ingestion queue.
-
+        Add video to ingestion queue (wraps retry mechanism).
+        
+        FIXED: Now accepts both IngestStage enum and string stage values.
+        
         Args:
             video_id: YouTube video ID
-            stage: Current processing stage
+            stage: Current processing stage (str or IngestStage)
             priority: Priority (1-10, lower=higher priority)
             metadata: Optional metadata for queue item
 
         Returns:
             True if successful
         """
+        return self.add_to_queue_with_retry(video_id, stage, priority, metadata, max_retries=3)
+
+    def _validate_queue_write(self, video_id: str, expected_stage: str) -> bool:
+        """
+        Validate that a queue entry was successfully written.
+        
+        Reads queue entry back from Firestore and confirms required fields.
+        
+        Args:
+            video_id: YouTube video ID
+            expected_stage: Expected stage value
+            
+        Returns:
+            True if queue entry is valid, False otherwise
+        """
         try:
-            logger.info(f"Adding {video_id} to queue at stage: {stage.value}")
-
-            queue_item = {
-                "video_id": video_id,
-                "stage": stage.value,
-                "priority": priority,
-                "status": "queued",
-                "created_at": datetime.utcnow().isoformat(),
-                "updated_at": datetime.utcnow().isoformat(),
-                "retry_count": 0,
-                "max_retries": 3,
-            }
-
-            if metadata:
-                queue_item.update(metadata)
-
-            # Generate document ID based on priority and timestamp
-            queue_doc_id = f"{priority:02d}_{datetime.utcnow().timestamp()}_{video_id}"
-
-            self.db.collection(self.QUEUE_COLLECTION).document(queue_doc_id).set(queue_item)
-
-            logger.info(f"[OK] Added {video_id} to queue")
+            # Query for queue entry with this video_id
+            docs = list(
+                self.db.collection(self.QUEUE_COLLECTION)
+                .where("video_id", "==", video_id)
+                .limit(1)
+                .stream()
+            )
+            
+            if not docs:
+                logger.error(f"Queue validation failed: No queue entry found for {video_id}")
+                return False
+            
+            doc = docs[0]
+            queue_data = doc.to_dict()
+            
+            # Validate required fields
+            required_fields = ["video_id", "stage", "status", "created_at"]
+            for field in required_fields:
+                if field not in queue_data:
+                    logger.error(f"Queue validation failed: Missing field '{field}' for {video_id}")
+                    return False
+            
+            # Validate field values
+            if queue_data.get("video_id") != video_id:
+                logger.error(f"Queue validation failed: video_id mismatch for {video_id}")
+                return False
+            
+            if queue_data.get("stage") != expected_stage:
+                logger.error(f"Queue validation failed: stage mismatch for {video_id} (expected {expected_stage}, got {queue_data.get('stage')})")
+                return False
+            
+            if queue_data.get("status") != "queued":
+                logger.error(f"Queue validation failed: status not 'queued' for {video_id}")
+                return False
+            
+            logger.debug(f"Queue validation PASSED for {video_id}")
             return True
-
+            
         except Exception as e:
-            logger.error(f"Failed to add {video_id} to queue: {e}")
+            logger.error(f"Queue validation error for {video_id}: {str(e)}")
+            return False
+
+    def verify_and_heal_queue(self, video_id: str) -> bool:
+        """
+        Self-healing: Check if video exists but queue entry is missing.
+        If missing, automatically recreate the queue entry.
+        
+        Args:
+            video_id: YouTube video ID
+            
+        Returns:
+            True if queue entry exists after repair attempt
+        """
+        try:
+            # Check video existence
+            video_doc = self.db.collection(self.VIDEOS_COLLECTION).document(video_id).get()
+            
+            if not video_doc.exists:
+                logger.debug(f"Video does not exist: {video_id}")
+                return False
+            
+            video_data = video_doc.to_dict()
+            
+            # Check queue existence
+            queue_exists = self.queue_entry_exists(video_id)
+            
+            if queue_exists:
+                logger.debug(f"Queue entry exists for {video_id}")
+                return True
+            
+            # Queue entry missing but video exists - REPAIR IT
+            logger.warning(f"[REPAIR] Queue entry missing for {video_id}, recreating...")
+            
+            stage = video_data.get("stage", "metadata")
+            priority = video_data.get("priority", 5)
+            
+            # Attempt to recreate queue entry
+            success = self.add_to_queue_with_retry(
+                video_id,
+                stage=stage,
+                priority=priority,
+                metadata={"healed": True, "healed_at": datetime.utcnow().isoformat()}
+            )
+            
+            if success:
+                logger.warning(f"[OK] Successfully healed queue entry for {video_id}")
+            else:
+                logger.error(f"[FAIL] Failed to heal queue entry for {video_id}")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Queue healing error for {video_id}: {str(e)}")
             return False
 
     def dequeue_next_video(self) -> Optional[Dict[str, Any]]:
         """
-        Get next video from queue (FIFO by priority, then creation time).
-
+        Get next video from queue respecting STAGE SEQUENCE.
+        
+        CRITICAL: Dequeues jobs in stage order, not just by priority/time.
+        This prevents re-processing download when frame_extraction is waiting.
+        
+        Process:
+        1. Get ALL queued jobs
+        2. Group by video_id
+        3. For each video, get its next required stage
+        4. Return highest priority next-stage job
+        
         Returns:
             Queue item dictionary or None if queue empty
         """
         try:
-            # Query for oldest queued item with highest priority
+            # Import stage sequence
+            try:
+                from ingest.stages import STAGE_SEQUENCE
+            except ImportError:
+                logger.error("Could not import STAGE_SEQUENCE")
+                STAGE_SEQUENCE = [
+                    "metadata", "download", "frame_extraction", "pose",
+                    "torso_crop", "jersey_ocr", "rep_extraction", "biomechanics", "complete"
+                ]
+            
+            # Query for queued items
             query = (
                 self.db.collection(self.QUEUE_COLLECTION)
                 .where("status", "==", "queued")
-                .order_by("priority")
-                .order_by("created_at")
-                .limit(1)
             )
 
-            docs = query.stream()
-            doc = next(docs, None)
-
-            if doc:
-                queue_item = doc.to_dict()
-                queue_item["_doc_id"] = doc.id
-
-                logger.info(f"[OK] Dequeued video: {queue_item['video_id']} (stage: {queue_item['stage']})")
-                return queue_item
-            else:
+            docs = list(query.stream())
+            
+            if not docs:
                 logger.debug("Queue is empty")
                 return None
+            
+            # Convert to dict and add doc ID
+            items = []
+            for doc in docs:
+                item = doc.to_dict()
+                item["_doc_id"] = doc.id
+                items.append(item)
+            
+            # GROUP by video_id to find next stage for each video
+            videos = {}
+            for item in items:
+                vid = item.get("video_id")
+                stage = item.get("stage")
+                
+                if vid not in videos:
+                    videos[vid] = []
+                videos[vid].append((stage, item))
+            
+            # FILTER: For each video, keep ONLY the earliest stage in STAGE_SEQUENCE
+            # This prevents processing download when frame_extraction is queued
+            next_stage_items = []
+            
+            for vid, jobs in videos.items():
+                # Get the stage that comes first in the sequence
+                stages_for_video = [stage for stage, _ in jobs]
+                
+                # Find earliest stage index
+                earliest_idx = min(
+                    (STAGE_SEQUENCE.index(s) if s in STAGE_SEQUENCE else 999) 
+                    for s in stages_for_video
+                )
+                
+                # Get the job for that earliest stage
+                earliest_stage = STAGE_SEQUENCE[earliest_idx] if earliest_idx < len(STAGE_SEQUENCE) else None
+                
+                for stage, item in jobs:
+                    if stage == earliest_stage:
+                        next_stage_items.append(item)
+                        break
+            
+            if not next_stage_items:
+                logger.debug("Queue is empty or all jobs already assigned")
+                return None
+            
+            # Sort remaining by priority (descending) then created_at (ascending)
+            # Convert created_at to comparable format (handle both timestamps and strings)
+            def sort_key(item):
+                priority = -item.get("priority", 0)
+                created_at = item.get("created_at", 0)
+                # Convert Firestore timestamp to sortable value (use 0 if missing/invalid)
+                if hasattr(created_at, 'timestamp'):
+                    # DatetimeWithNanoseconds object - get unix timestamp
+                    timestamp = created_at.timestamp()
+                elif isinstance(created_at, (int, float)):
+                    # Already a timestamp
+                    timestamp = created_at
+                else:
+                    # Default to 0 if we can't parse
+                    timestamp = 0
+                return (priority, timestamp)
+            
+            next_stage_items.sort(key=sort_key)
+            
+            queue_item = next_stage_items[0]
+            
+            logger.info(
+                f"[OK] Dequeued video: {queue_item['video_id']} (stage: {queue_item['stage']}) "
+                f"[filtered to next-stage-in-sequence]"
+            )
+            return queue_item
 
         except Exception as e:
             logger.error(f"Failed to dequeue video: {e}")

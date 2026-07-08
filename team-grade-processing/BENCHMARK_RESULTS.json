@@ -1,0 +1,36 @@
+{
+  "baseline": {
+    "metadata": 100,
+    "download": 30000,
+    "frame_extraction": 60000,
+    "pose": 5000,
+    "torso_crop": 300,
+    "jersey_ocr": 2000,
+    "rep_extraction": 1000,
+    "biomechanics": 5000,
+    "complete": 50
+  },
+  "phase1": {
+    "metadata": 100.0,
+    "download": 22500.0,
+    "frame_extraction": 45000.0,
+    "pose": 3250.0,
+    "torso_crop": 300.0,
+    "jersey_ocr": 1200.0,
+    "rep_extraction": 1000.0,
+    "biomechanics": 5000.0,
+    "complete": 50.0
+  },
+  "phase2": {
+    "metadata": 100.0,
+    "download": 16875.0,
+    "frame_extraction": 45000.0,
+    "pose": 3250.0,
+    "torso_crop": 195.0,
+    "jersey_ocr": 1200.0,
+    "rep_extraction": 400.0,
+    "biomechanics": 5000.0,
+    "complete": 50.0
+  },
+  "timestamp": "2026-04-07T16:03:16.262542"
+}

@@ -132,7 +132,12 @@ class QueueManager:
 
             if success:
                 logger.info(f"[OK] Marked completed: {queue_doc_id}")
-                self.firestore.remove_from_queue(queue_doc_id)
+                # Remove from queue (critical - must succeed)
+                removed = self.firestore.remove_from_queue(queue_doc_id)
+                if not removed:
+                    logger.error(f"[CRITICAL] Failed to remove {queue_doc_id} from queue (job will be re-processed!)")
+                    return False
+                logger.info(f"[OK] Removed {queue_doc_id} from queue")
 
             return success
 
