@@ -1,2 +1,10 @@
 node_modules
-node_modules
+
+# Secrets / credentials — never commit
+credentials/
+*.env
+.env
+.env.*
+!*.env.example
+serviceAccountKey.json
+service-account.json
