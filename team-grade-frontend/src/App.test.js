@@ -1,8 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import App from './App';
 
-test('renders learn react link', () => {
+test('renders the ingest form on load', () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  expect(screen.getByText(/TEAM-GRADE/i)).toBeInTheDocument();
+  expect(screen.getByPlaceholderText(/youtube.com\/watch/i)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /submit for analysis/i })).toBeInTheDocument();
 });

@@ -9,6 +9,14 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime
 
+try:
+    from config.constants import ALL_STAGES
+except ImportError:
+    ALL_STAGES = [
+        "metadata", "download", "frame_extraction", "pose", "torso_crop",
+        "jersey_ocr", "rep_extraction", "biomechanics", "complete",
+    ]
+
 # Setup logging
 logger = logging.getLogger(__name__)
 
@@ -158,8 +166,7 @@ class IngestWorker:
                     "timestamp": datetime.now().isoformat(),
                     "stages": {
                         stage: {"status": "pending"}
-                        for stage in ["metadata", "download", "frame_extraction", "pose_detection",
-                                    "torso_crop", "jersey_ocr", "rep_extraction", "biomechanics", "complete"]
+                        for stage in ALL_STAGES
                     },
                 }
                 

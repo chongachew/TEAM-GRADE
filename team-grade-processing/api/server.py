@@ -26,24 +26,26 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def ensure_dependencies():
     """Ensure all required dependencies are installed."""
-    required_packages = [
-        "fastapi",
-        "uvicorn", 
-        "pydantic",
-        "google-cloud-firestore",
-        "yt-dlp",
-        "opencv-python",
-        "numpy",
-        "pillow",
-    ]
-    
+    # Maps pip package name -> the actual importable module name (these differ
+    # for several packages, e.g. "opencv-python" installs as "cv2").
+    required_packages = {
+        "fastapi": "fastapi",
+        "uvicorn": "uvicorn",
+        "pydantic": "pydantic",
+        "google-cloud-firestore": "google.cloud.firestore",
+        "yt-dlp": "yt_dlp",
+        "opencv-python": "cv2",
+        "numpy": "numpy",
+        "pillow": "PIL",
+    }
+
     missing = []
-    for package in required_packages:
+    for package, module_name in required_packages.items():
         try:
-            __import__(package.replace("-", "_"))
+            __import__(module_name)
         except ImportError:
             missing.append(package)
-    
+
     if missing:
         print(f"\n[WARN] Missing dependencies: {', '.join(missing)}")
         print("[INFO] Installing missing dependencies...")
@@ -55,9 +57,9 @@ def ensure_dependencies():
                     stderr=subprocess.DEVNULL,
                     timeout=60
                 )
-                print(f"  ✓ {package}")
+                print(f"  [OK] {package}")
             except Exception as e:
-                print(f"  ✗ {package}: {e}")
+                print(f"  [FAIL] {package}: {e}")
         print("[OK] Dependency check complete\n")
 
 # Run dependency check at import time

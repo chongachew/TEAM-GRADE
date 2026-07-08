@@ -1,93 +1,103 @@
 # TEAM-GRADE
-AI Game footage grader for college football scouting
 
-**Status Badges:**
-[![Python Tests](https://github.com/chongachew/TEAM-GRADE/actions/workflows/python-tests.yml/badge.svg?branch=main)](https://github.com/chongachew/TEAM-GRADE/actions/workflows/python-tests.yml)
-[![Node.js Tests](https://github.com/chongachew/TEAM-GRADE/actions/workflows/node-tests.yml/badge.svg?branch=main)](https://github.com/chongachew/TEAM-GRADE/actions/workflows/node-tests.yml)
-[![Code Quality](https://github.com/chongachew/TEAM-GRADE/actions/workflows/code-quality.yml/badge.svg?branch=main)](https://github.com/chongachew/TEAM-GRADE/actions/workflows/code-quality.yml)
-[![Build & Deploy](https://github.com/chongachew/TEAM-GRADE/actions/workflows/build-deploy.yml/badge.svg?branch=main)](https://github.com/chongachew/TEAM-GRADE/actions/workflows/build-deploy.yml)
-[![Integration Tests](https://github.com/chongachew/TEAM-GRADE/actions/workflows/integration-tests.yml/badge.svg?branch=main)](https://github.com/chongachew/TEAM-GRADE/actions/workflows/integration-tests.yml)
+A video-analysis pipeline that turns raw football game film into per-player biomechanics
+and trait scores — submit a YouTube URL, and a queue-based worker downloads the video,
+runs pose estimation and jersey OCR, segments it into individual reps, and scores each one.
 
----
-
-# Bridge Athletics — Film Ingestion & Analysis Pipeline
-
-This repository contains the full ingestion and analysis system for Bridge Athletics:
-- YouTube → Firestore → Local Worker → Normalized Film
-- Player detection, tracking, pose estimation
-- Scouting trait extraction based on coaching manuals
-- Competition-tier classification using offer data + film features
-
-## Folder Structure
+## How it works
 
 ```
-bridge-athletics/
-│
-├── ingestion/              # Download + normalization worker
-│   ├── local_worker.py
-│   ├── firestore_utils.py
-│   ├── raw/
-│   └── normalized/
-│
-├── analysis/               # ML + feature extraction
-│   ├── trait_dictionary.json
-│   ├── feature_extraction/
-│   ├── competition_model/
-│   └── utils/
-│
-├── firestore/              # Firestore schema + examples
-│   ├── schema.md
-│   └── examples/
-│
-└── docs/                   # Architecture + philosophy
-    ├── architecture.md
-    ├── pipeline_overview.md
-    └── scouting_philosophy.md
+                POST /api/ingest
+                       │
+                       ▼
+   FastAPI (api/server.py)  ──writes──▶  Firestore (videos/, ingestion_queue/)
+                                                │
+                                                ▼
+                              Worker (ingest_pipeline_worker.py)
+                              polls the queue and runs one stage per video per pass:
+
+   metadata → download → frame_extraction → pose → torso_crop →
+   jersey_ocr → rep_extraction → biomechanics → complete
+
+                                                │
+                                                ▼
+                GET /api/ingest/{id}/status  ◀──reads── Firestore
+                GET /api/analysis/{id}
+                       │
+                       ▼
+              React frontend (team-grade-frontend/)
+              upload form → live progress bar → results
 ```
 
-## Overview
+Each stage is retried independently (exponential backoff, 3 attempts) before failing the
+video, so a transient error in one stage doesn't restart the whole pipeline.
 
-This system ingests high school football games from YouTube, normalizes them, extracts player traits, and predicts competition level using a combination of:
-- Computer vision
-- Tracking
-- Pose estimation
-- Offer data
-- Scouting trait dictionaries
+## Notable engineering
 
-## Status
+- **Measured performance work, not guesswork.** The frame-extraction, pose, and
+  biomechanics stages were each profiled and optimized independently — GPU-accelerated
+  frame extraction with automatic CPU fallback when no CUDA device is present, a
+  lightweight pose model swap, and vectorized (NumPy) biomechanics scoring instead of
+  a per-frame Python loop. Combined, these took per-video processing from ~103s to ~72s
+  (see `team-grade-processing/BENCHMARK_RESULTS.txt` for the underlying numbers).
+- **Self-healing ingestion.** A video can end up "pending" with no corresponding queue
+  entry (e.g. the API call succeeded but the queue write raced or failed). The `/api/ingest`
+  endpoint detects this on repeat submission and re-enqueues automatically instead of
+  leaving the video stuck forever.
+- **Diagnosed and fixed live, not just in theory**: while building the frontend for this
+  repo, I ran the pipeline end-to-end against the real Firestore project and caught two
+  concrete bugs that only show up under real conditions — a stage-name mismatch between
+  the primary ingestion path and the rest of the pipeline (silently orphaning that stage's
+  status forever), and a queue entry that retried forever with no dead-letter path once
+  its underlying video document was gone.
 
-Early development — ingestion pipeline first, analysis pipeline next.
+## Repo layout
 
-## CI/CD & Testing
+```
+team-grade-processing/   # FastAPI backend + ingestion worker (the real backend)
+  api/server.py           # all live endpoints (health, ingest, status, analysis, queue)
+  ingest/                 # queue manager, Firestore client, worker orchestration
+  ingest/stages/          # the 9 pipeline stages + GPU/lightweight variants
+  processing/             # pose estimation, torso cropping, OCR, trait scoring
+  tests/                  # pytest suite (mocked Firestore, no live-service dependency)
+team-grade-frontend/     # React app: upload a video, watch it process, see results
+node-api/                # Firestore connectivity smoke-test script (not part of the live app)
+Analysis/trench_engine/  # standalone trait-scoring engine + its own demo (main.py)
+Docs/, Firestore/        # architecture notes and Firestore schema reference
+```
 
-This project includes comprehensive automated testing and deployment workflows via GitHub Actions:
+## Running it locally
 
-**Available Workflows:**
-- ✅ **Python Tests** - Unit tests across Python 3.9-3.12 on Linux/Windows/macOS
-- ✅ **Node.js Tests** - Frontend tests across Node 16-20 on all platforms
-- ✅ **Code Quality** - Linting, formatting, security scanning (Pylint, Flake8, Bandit)
-- ✅ **Build & Deploy** - Automated build verification and staging deployment
-- ✅ **Integration Tests** - End-to-end tests with Firestore emulator
+Requires a Firestore service-account key at `credentials/service-account.json`
+(gitignored — not included in this repo) and `ffmpeg` on your PATH for video download/merge.
 
-**Current Test Status:**
-- 68/68 unit tests passing ✅
-- Coverage reports available in Codecov
-- Code quality checks on every PR
-
-**Getting Started with Tests:**
 ```bash
-# Run all tests locally
-cd team-grade-processing
-pytest tests/test_endpoints_simplified.py tests/test_exceptions.py tests/test_validators.py -v
+# Backend (from repo root — these scripts cd into team-grade-processing/ themselves)
+pip install -r requirements.txt
+python start_api.py      # API on :8000
+python start_worker.py   # separate process — actually processes the queue
 
-# Run with coverage
-pytest tests/ --cov=api --cov=ingest --cov-report=html
+# Frontend
+cd team-grade-frontend
+npm install
+npm start                 # :3000, calls the API via REACT_APP_API_BASE (defaults to :8000)
 ```
 
-See [CI_CD_SETUP_GUIDE.md](./CI_CD_SETUP_GUIDE.md) for detailed documentation on:
-- How to configure optional services (SonarCloud, Slack, Codecov)
-- How to add the status badges to your README
-- Workflow customization for your deployment platform
-- Security best practices for CI/CD
+## Testing
 
----
+```bash
+cd team-grade-processing
+pytest tests/ -v
+```
+
+The suite mocks Firestore/YouTube/worker singletons rather than hitting the live project,
+so it's safe to run without credentials and won't touch production data.
+
+## Known limitations
+
+- The richer analysis surface (per-rep breakdown, summary statistics, aggregated trait
+  metrics across an endpoint hierarchy) was designed but never wired into the live API —
+  today `GET /api/analysis/{id}` returns the raw stored analysis dict for a video. Building
+  out `/reps`, `/summary`, `/metrics` as real endpoints is the natural next step.
+- GPU acceleration is optional (falls back to CPU automatically) but `ffmpeg` is a hard
+  requirement for the download stage.
