@@ -4,7 +4,7 @@ Detects jersey numbers from torso crops using EasyOCR.
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from config import settings
 from ingest.exceptions import (
@@ -15,7 +15,7 @@ from ingest.exceptions import (
     QueueError,
 )
 from ingest.validation import VideoIdValidator
-from ingest.utils.firestore_utils import get_utc_timestamp, write_jersey_number
+from ingest.utils.firestore_utils import get_utc_timestamp, write_jersey_number, write_jersey_number_for_track
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,7 @@ def run_jersey_ocr_stage(
                     video_id_safe,
                     stage=STAGE_NEXT,
                     priority=settings.QUEUE_DEFAULT_PRIORITY,
-                    metadata={"previous_stage": STAGE_NAME, "jersey_found": False}
+                    metadata={"previous_stage": STAGE_NAME, "tracks_with_jersey_detected": 0}
                 )
                 return True, None
             
@@ -151,72 +151,94 @@ def run_jersey_ocr_stage(
 
         # Get crops directory
         crops_dir = settings.get_torso_crops_dir(video_id_safe)
-
-        best_detection = None
-        best_confidence = 0.0
         ocr_stop_threshold = settings.OCR_STOP_ON_CONFIDENCE
+        multi_player = getattr(settings, 'MULTI_PLAYER_TRACKING_ENABLED', False)
 
-        # Process each crop
+        # Group crops by track_id (multi-player path) or process as one flat,
+        # global list (single-athlete path, track_id absent - unchanged behavior
+        # other than the read_jersey -> read_jersey_number fix below).
+        crops_by_track: Dict[Optional[int], List[Dict[str, Any]]] = {}
+        for crop_doc in crops_docs:
+            data = crop_doc.to_dict()
+            key = data.get("track_id") if multi_player else None
+            crops_by_track.setdefault(key, []).append(data)
+
+        best_detections: Dict[Optional[int], Dict[str, Any]] = {}
+
+        # Process each track's crops (or the single global "track" None on the
+        # single-athlete path), stopping early PER TRACK on a high-confidence hit
+        # rather than stopping the whole stage on the first video-wide hit.
         try:
-            for crop_doc in crops_docs:
-                try:
-                    crop_data = crop_doc.to_dict()
-                    frame_index = crop_data.get("frame_index")
-                    
-                    crop_path = crops_dir / f"torso_{frame_index:06d}.jpg"
-                    if not crop_path.exists():
-                        logger.debug(f"[{STAGE_NAME}] Crop file not found: {crop_path.name}")
-                        continue
-                    
-                    crop_image = cv2.imread(str(crop_path))
-                    if crop_image is None:
-                        logger.debug(f"[{STAGE_NAME}] Failed to load crop image: {crop_path.name}")
-                        continue
-                    
-                    # Run OCR
-                    ocr_result = ocr.read_jersey(crop_image)
-                    
-                    if ocr_result and ocr_result.get("jersey_number"):
-                        jersey_num = ocr_result.get("jersey_number")
-                        confidence = ocr_result.get("confidence", 0.0)
-                        
-                        logger.info(f"[{STAGE_NAME}] Jersey detected", extra={
-                            "video_id": video_id_safe,
-                            "jersey": jersey_num,
-                            "confidence": confidence,
-                        })
-                        
-                        # Keep best detection
-                        if confidence > best_confidence:
-                            best_confidence = confidence
-                            best_detection = {
-                                "jersey_number": jersey_num,
+            for track_id, track_crops in crops_by_track.items():
+                best_confidence = 0.0
+                frame_index = None
+
+                for crop_data in track_crops:
+                    try:
+                        frame_index = crop_data.get("frame_index")
+
+                        if track_id is not None:
+                            crop_path = crops_dir / f"torso_{frame_index:06d}_{track_id:03d}.jpg"
+                        else:
+                            crop_path = crops_dir / f"torso_{frame_index:06d}.jpg"
+
+                        if not crop_path.exists():
+                            logger.debug(f"[{STAGE_NAME}] Crop file not found: {crop_path.name}")
+                            continue
+
+                        crop_image = cv2.imread(str(crop_path))
+                        if crop_image is None:
+                            logger.debug(f"[{STAGE_NAME}] Failed to load crop image: {crop_path.name}")
+                            continue
+
+                        # Run OCR (JerseyOCR's real method is read_jersey_number,
+                        # returning a (number, confidence) tuple - a previous
+                        # version of this stage called a nonexistent read_jersey()
+                        # method here, which raised AttributeError on every crop,
+                        # silently caught below, so OCR never actually ran).
+                        jersey_num, confidence = ocr.read_jersey_number(
+                            crop_image, confidence_threshold=settings.OCR_CONFIDENCE_THRESHOLD
+                        )
+
+                        if jersey_num:
+                            logger.info(f"[{STAGE_NAME}] Jersey detected", extra={
+                                "video_id": video_id_safe,
+                                "track_id": track_id,
+                                "jersey": jersey_num,
                                 "confidence": confidence,
-                                "frame_index": frame_index,
-                            }
-                            
-                            # Stop if confident enough
-                            if confidence >= ocr_stop_threshold:
-                                logger.info(f"[{STAGE_NAME}] High-confidence detection, stopping", extra={
-                                    "video_id": video_id_safe,
+                            })
+
+                            if confidence > best_confidence:
+                                best_confidence = confidence
+                                best_detections[track_id] = {
+                                    "jersey_number": jersey_num,
                                     "confidence": confidence,
-                                    "threshold": ocr_stop_threshold,
-                                })
-                                break
-                
-                except Exception as frame_error:
-                    logger.warning(f"[{STAGE_NAME}] Error processing crop: {frame_error}", extra={
-                        "video_id": video_id_safe,
-                        "frame_index": frame_index,
-                    })
-                    continue
-            
+                                    "frame_index": frame_index,
+                                }
+
+                                if confidence >= ocr_stop_threshold:
+                                    logger.info(f"[{STAGE_NAME}] High-confidence detection, stopping this track", extra={
+                                        "video_id": video_id_safe,
+                                        "track_id": track_id,
+                                        "confidence": confidence,
+                                        "threshold": ocr_stop_threshold,
+                                    })
+                                    break
+
+                    except Exception as frame_error:
+                        logger.warning(f"[{STAGE_NAME}] Error processing crop: {frame_error}", extra={
+                            "video_id": video_id_safe,
+                            "track_id": track_id,
+                            "frame_index": frame_index,
+                        })
+                        continue
+
             logger.info(f"[{STAGE_NAME}] OCR complete", extra={
                 "video_id": video_id_safe,
-                "crops_processed": len(crops_docs),
-                "detected": bool(best_detection),
+                "tracks_processed": len(crops_by_track),
+                "tracks_with_jersey_detected": len(best_detections),
             })
-        
+
         except Exception as e:
             error_code = "FRAME_PROCESSING_ERROR"
             logger.error(f"[{STAGE_NAME}] Error during OCR processing: {e}", extra={
@@ -227,26 +249,34 @@ def run_jersey_ocr_stage(
 
         # Write to Firestore
         try:
-            if best_detection:
-                write_jersey_number(
-                    firestore_client,
-                    video_id_safe,
-                    best_detection["jersey_number"],
-                    best_detection["confidence"],
-                    best_detection["frame_index"]
-                )
-                logger.info(f"[{STAGE_NAME}] Wrote jersey detection to Firestore", extra={
+            for track_id, detection in best_detections.items():
+                if track_id is not None:
+                    write_jersey_number_for_track(
+                        firestore_client, video_id_safe, track_id,
+                        detection["jersey_number"], detection["confidence"], detection["frame_index"],
+                    )
+                else:
+                    write_jersey_number(
+                        firestore_client,
+                        video_id_safe,
+                        detection["jersey_number"],
+                        detection["confidence"],
+                        detection["frame_index"]
+                    )
+            if best_detections:
+                logger.info(f"[{STAGE_NAME}] Wrote jersey detections to Firestore", extra={
                     "video_id": video_id_safe,
-                    "jersey_number": best_detection["jersey_number"],
+                    "count": len(best_detections),
                 })
-            
+
             # Update stage status
             firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(video_id_safe).update({
                 f"stages.{STAGE_NAME}.status": "completed",
-                f"stages.{STAGE_NAME}.jersey_found": bool(best_detection),
+                f"stages.{STAGE_NAME}.tracks_processed": len(crops_by_track),
+                f"stages.{STAGE_NAME}.tracks_with_jersey_detected": len(best_detections),
                 f"stages.{STAGE_NAME}.completed_at": get_utc_timestamp(),
             })
-        
+
         except Exception as e:
             error_code = "FIRESTORE_ERROR"
             logger.error(f"[{STAGE_NAME}] Failed to write to Firestore: {e}", extra={
@@ -263,8 +293,7 @@ def run_jersey_ocr_stage(
                 priority=settings.QUEUE_DEFAULT_PRIORITY,
                 metadata={
                     "previous_stage": STAGE_NAME,
-                    "jersey_found": bool(best_detection),
-                    "jersey_number": best_detection["jersey_number"] if best_detection else None,
+                    "tracks_with_jersey_detected": len(best_detections),
                 }
             )
             if not success:

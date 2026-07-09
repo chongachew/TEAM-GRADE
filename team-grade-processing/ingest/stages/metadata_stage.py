@@ -21,10 +21,21 @@ logger = logging.getLogger(__name__)
 # Stage name constants (avoid circular import from ingest.stages.__init__)
 STAGE_NAME = "metadata"
 STAGE_NEXT = "download"
-STAGE_SEQUENCE = [
-    "metadata", "download", "frame_extraction", "pose", "torso_crop",
-    "jersey_ocr", "rep_extraction", "biomechanics", "complete"
-]
+
+# When MULTI_PLAYER_TRACKING_ENABLED, three extra stages (motion_compensation, detection,
+# tracking) run between frame_extraction and pose. Gated so existing single-athlete videos
+# keep the original 9-stage `stages` map shape until the new stages are proven.
+if getattr(settings, "MULTI_PLAYER_TRACKING_ENABLED", False):
+    STAGE_SEQUENCE = [
+        "metadata", "download", "frame_extraction",
+        "motion_compensation", "detection", "tracking",
+        "pose", "torso_crop", "jersey_ocr", "rep_extraction", "biomechanics", "complete"
+    ]
+else:
+    STAGE_SEQUENCE = [
+        "metadata", "download", "frame_extraction", "pose", "torso_crop",
+        "jersey_ocr", "rep_extraction", "biomechanics", "complete"
+    ]
 
 
 def run_metadata_stage(

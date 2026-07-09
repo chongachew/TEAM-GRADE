@@ -23,6 +23,7 @@ from ingest.exceptions import (
 )
 from ingest.validation import VideoIdValidator
 from ingest.utils.firestore_utils import get_utc_timestamp, write_pose_batch
+from processing.pose_track_matching import match_poses_to_tracks
 
 logger = logging.getLogger(__name__)
 
@@ -170,11 +171,14 @@ def run_pose_stage_lite(
             # Create lightweight estimator with fallback to full model
             use_lite = getattr(settings, 'POSE_USE_LITE_MODEL', True)
             device = getattr(settings, 'POSE_DEVICE', 'cpu')
-            
+            multi_player = getattr(settings, 'MULTI_PLAYER_TRACKING_ENABLED', False)
+            num_poses = settings.POSE_MAX_PLAYERS if multi_player else 1
+
             pose_estimator = PoseEstimatorFactory.create(
                 use_lite=use_lite,
                 device=device,
-                fallback_to_full=True
+                fallback_to_full=True,
+                num_poses=num_poses
             )
             
             if not pose_estimator:
@@ -202,8 +206,27 @@ def run_pose_stage_lite(
             }, exc_info=True)
             return False, error_code
         
+        # -------- Load per-frame tracks (multi-player path only) --------
+
+        frame_tracks_by_index = {}
+        if multi_player:
+            try:
+                tracks_ref = firestore_client.db.collection(
+                    settings.COLLECTION_VIDEOS
+                ).document(video_id_safe).collection("tracks")
+                for doc in tracks_ref.stream():
+                    data = doc.to_dict()
+                    frame_tracks_by_index.setdefault(data["frame_index"], []).append(data)
+            except Exception as e:
+                error_code = "FIRESTORE_ERROR"
+                logger.error(f"[{STAGE_NAME}] Failed to read tracks: {e}", extra={
+                    "video_id": video_id_safe,
+                    "error_code": error_code
+                })
+                return False, error_code
+
         # -------- Process frames --------
-        
+
         poses = []
         high_confidence_count = 0
         confidence_threshold = getattr(
@@ -211,37 +234,64 @@ def run_pose_stage_lite(
             'POSE_CONFIDENCE_THRESHOLD',
             0.7
         )
-        
+
         try:
             import cv2
-            
+
             logger.info(f"[{STAGE_NAME}] Processing frames with confidence threshold {confidence_threshold}", extra={
                 "video_id": video_id_safe,
             })
-            
+
             for idx, frame_path in enumerate(frame_paths):
                 try:
                     frame = cv2.imread(str(frame_path))
                     if frame is None:
                         logger.debug(f"[{STAGE_NAME}] Skipped unreadable frame: {frame_path.name}")
                         continue
-                    
-                    # Estimate pose using lightweight model
-                    landmarks, confidence = pose_estimator.estimate(frame)
-                    
-                    # Filter by confidence threshold
-                    if confidence >= confidence_threshold and landmarks:
-                        high_confidence_count += 1
-                        poses.append({
-                            "frame_index": idx,
-                            "timestamp_seconds": idx / getattr(
-                                settings, 'FRAME_EXTRACTION_FPS', 15
-                            ),
-                            "landmarks": landmarks,
-                            "confidence_mean": float(confidence),
-                            "created_at": get_utc_timestamp()
-                        })
-                    
+
+                    if multi_player:
+                        # One multi-pose call returns every detected person in
+                        # this frame; assign each to a track_id via IoU against
+                        # this frame's tracked boxes (see pose_track_matching.py)
+                        # rather than one MediaPipe call per player.
+                        pose_sets = pose_estimator.estimate_multi(frame)
+                        frame_tracks = frame_tracks_by_index.get(idx, [])
+                        matched = match_poses_to_tracks(
+                            pose_sets, frame_tracks, frame.shape,
+                            iou_threshold=settings.POSE_TRACK_IOU_THRESHOLD
+                        ) if pose_sets and frame_tracks else []
+
+                        for landmarks, track_id in matched:
+                            confidences = [kp.get("confidence", 0.0) for kp in landmarks.values()]
+                            confidence = sum(confidences) / len(confidences) if confidences else 0.0
+                            if confidence >= confidence_threshold and landmarks:
+                                high_confidence_count += 1
+                                poses.append({
+                                    "frame_index": idx,
+                                    "track_id": track_id,
+                                    "timestamp_seconds": idx / getattr(
+                                        settings, 'FRAME_EXTRACTION_FPS', 15
+                                    ),
+                                    "landmarks": landmarks,
+                                    "confidence_mean": float(confidence),
+                                    "created_at": get_utc_timestamp()
+                                })
+                    else:
+                        # Single-athlete path - unchanged from before this pivot.
+                        landmarks, confidence = pose_estimator.estimate(frame)
+
+                        if confidence >= confidence_threshold and landmarks:
+                            high_confidence_count += 1
+                            poses.append({
+                                "frame_index": idx,
+                                "timestamp_seconds": idx / getattr(
+                                    settings, 'FRAME_EXTRACTION_FPS', 15
+                                ),
+                                "landmarks": landmarks,
+                                "confidence_mean": float(confidence),
+                                "created_at": get_utc_timestamp()
+                            })
+
                     # Log progress
                     log_interval = getattr(settings, 'POSE_PROGRESS_LOG_INTERVAL', 50)
                     if (idx + 1) % log_interval == 0:
@@ -251,14 +301,14 @@ def run_pose_stage_lite(
                             "total": len(frame_paths),
                             "poses_found": high_confidence_count,
                         })
-                
+
                 except Exception as frame_error:
                     logger.warning(f"[{STAGE_NAME}] Error processing frame {idx}: {frame_error}", extra={
                         "video_id": video_id_safe,
                         "frame_index": idx,
                     })
                     continue
-            
+
             logger.info(f"[{STAGE_NAME}] Pose estimation complete", extra={
                 "video_id": video_id_safe,
                 "total_frames": len(frame_paths),

@@ -23,9 +23,11 @@ jobs:
 
     - name: Install Python dependencies
       working-directory: ./team-grade-processing
+      # See python-tests.yml: "../requirements.txt" resolved to the wrong
+      # (repo-root) file; fixed to install this directory's own requirements.
       run: |
         python -m pip install --upgrade pip
-        pip install -r ../requirements.txt
+        pip install -r requirements.txt
         pip install pylint flake8 black isort pytest
 
     - name: Check code formatting with Black
@@ -77,7 +79,7 @@ jobs:
       working-directory: ./team-grade-processing
       run: |
         python -m pip install --upgrade pip
-        pip install -r ../requirements.txt
+        pip install -r requirements.txt
         pip install pytest pytest-cov
 
     - name: Run tests with coverage

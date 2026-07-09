@@ -66,20 +66,25 @@ class LightweightPoseEstimator:
         landmarks, confidence = estimator.estimate(frame)
     """
     
-    def __init__(self, use_lite: bool = True, device: str = "cpu"):
+    def __init__(self, use_lite: bool = True, device: str = "cpu", num_poses: int = 1):
         """Initialize lightweight pose estimator.
-        
+
         Args:
             use_lite: If True, download and use lite model (2MB)
                       If False, use full model (35MB) for reference
             device: Compute device ('cpu', 'cuda')
+            num_poses: Max number of people MediaPipe will detect per frame.
+                       1 for the single-athlete pipeline (default, unchanged
+                       behavior); settings.POSE_MAX_PLAYERS for the multi-player
+                       pipeline (see estimate_multi()).
         """
         self.use_lite = use_lite
         self.device = device
+        self.num_poses = num_poses
         self.pose_landmarker = None
         self.model_path = None
         self.model_type = "lite" if use_lite else "full"
-        
+
         self._download_model()
         self._load_model()
     
@@ -147,7 +152,7 @@ class LightweightPoseEstimator:
             options = vision.PoseLandmarkerOptions(
                 base_options=base_options,
                 running_mode=vision.RunningMode.IMAGE,
-                num_poses=1,
+                num_poses=self.num_poses,
                 min_pose_detection_confidence=0.6 if self.use_lite else 0.5,
                 min_pose_presence_confidence=0.6 if self.use_lite else 0.5,
                 min_tracking_confidence=0.5
@@ -221,7 +226,54 @@ class LightweightPoseEstimator:
         except Exception as e:
             logger.error(f"[Lightweight Pose] Pose estimation failed: {e}")
             return {}, 0.0
-    
+
+    def estimate_multi(self, frame: np.ndarray) -> List[Tuple[Dict[str, Any], float]]:
+        """Estimate ALL detected poses from a single frame (multi-player path).
+
+        Requires the estimator to have been constructed with num_poses > 1.
+        Unlike estimate(), which only ever reads pose_landmarks[0], this reads
+        every returned landmark set - MediaPipe attaches no player identity to
+        them, so callers must assign identity separately (see
+        processing/pose_track_matching.py).
+
+        Args:
+            frame: Input frame (BGR format from cv2)
+
+        Returns:
+            List of (landmarks_dict, mean_confidence) tuples, one per detected
+            person, in MediaPipe's returned order (arbitrary, not track-aligned).
+        """
+        try:
+            import cv2
+            import mediapipe as mp
+
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+            results = self.pose_landmarker.detect(image)
+
+            all_poses: List[Tuple[Dict[str, Any], float]] = []
+            if results.pose_landmarks:
+                for pose_landmarks in results.pose_landmarks:
+                    landmarks_dict = {}
+                    confidences = []
+                    for name, landmark in zip(KEYPOINT_NAMES, pose_landmarks):
+                        landmarks_dict[name] = {
+                            "x": float(landmark.x),
+                            "y": float(landmark.y),
+                            "z": float(landmark.z),
+                            "confidence": float(landmark.visibility) if hasattr(landmark, 'visibility') else 1.0
+                        }
+                        confidences.append(landmarks_dict[name]["confidence"])
+                    mean_confidence = float(np.mean(confidences)) if confidences else 0.0
+                    all_poses.append((landmarks_dict, mean_confidence))
+
+            logger.debug(f"[Lightweight Pose] Detected {len(all_poses)} poses (multi)")
+            return all_poses
+
+        except Exception as e:
+            logger.error(f"[Lightweight Pose] Multi-pose estimation failed: {e}")
+            return []
+
     def batch_estimate(
         self,
         frames: List[np.ndarray]
@@ -283,37 +335,40 @@ class PoseEstimatorFactory:
     def create(
         use_lite: bool = True,
         device: str = "cpu",
-        fallback_to_full: bool = True
+        fallback_to_full: bool = True,
+        num_poses: int = 1
     ) -> Optional[LightweightPoseEstimator]:
         """Create pose estimator (lite or full model).
-        
+
         Args:
             use_lite: If True, try lite model first
             device: Compute device
             fallback_to_full: If lite fails and this is True, try full model
-        
+            num_poses: Max people to detect per frame (1 = single-athlete path,
+                       unchanged default; > 1 = multi-player path)
+
         Returns:
             LightweightPoseEstimator instance, or None if all models fail
         """
         try:
             if use_lite:
                 logger.info("[Pose Factory] Creating lightweight (lite) pose estimator...")
-                estimator = LightweightPoseEstimator(use_lite=True, device=device)
+                estimator = LightweightPoseEstimator(use_lite=True, device=device, num_poses=num_poses)
                 logger.info("[Pose Factory] Lightweight estimator created")
                 return estimator
             else:
                 logger.info("[Pose Factory] Creating full pose estimator...")
-                estimator = LightweightPoseEstimator(use_lite=False, device=device)
+                estimator = LightweightPoseEstimator(use_lite=False, device=device, num_poses=num_poses)
                 logger.info("[Pose Factory] Full estimator created")
                 return estimator
-        
+
         except Exception as e:
             if use_lite and fallback_to_full:
                 logger.warning(
                     f"[Pose Factory] Lite model failed: {e}. Falling back to full model..."
                 )
                 try:
-                    estimator = LightweightPoseEstimator(use_lite=False, device=device)
+                    estimator = LightweightPoseEstimator(use_lite=False, device=device, num_poses=num_poses)
                     logger.info("[Pose Factory] Full estimator created (from lite fallback)")
                     return estimator
                 except Exception as e2:

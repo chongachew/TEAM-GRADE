@@ -67,40 +67,113 @@ def _load_trait_configs(config_root: str) -> Dict[str, Dict]:
         return {}
 
 
-def _extract_pose_features(pose_data: Dict[str, Any]) -> Dict[str, float]:
+def _extract_pose_features(pose_frames: List[Dict[str, Dict[str, float]]]) -> Dict[str, float]:
     """
-    Extract numerical features from raw pose data.
-    
+    Extract numerical features from a rep's ordered sequence of real pose frames.
+
+    Replaces the previous np.random.uniform placeholder (a real, pre-existing
+    bug independent of the multi-player pivot - every feature was fabricated
+    regardless of input). Reuses existing primitives rather than inventing new
+    formulas:
+      - processing.utils.calculate_keypoint_displacement (promoted from
+        RepExtractor._calculate_displacement) drives the velocity-derived
+        features (linear_speed, acceleration, leg_power, lateral_speed,
+        deceleration).
+      - FastTrajectoryAnalyzer.extract_center_point (hip/shoulder centroid)
+        drives the stability-derived features (core_stability, balance,
+        hip_mobility, positioning) as the inverse of centroid-trajectory
+        variance across the rep.
+      - Features with no keypoint-only signal (upper_body, footwork,
+        hand_placement, body_control, field_vision, decision_making) fall back
+        to mean keypoint confidence across the rep - a documented placeholder,
+        not silently presented as equally trustworthy as the motion-derived
+        features above (see the README/plan honesty note this mirrors).
+
     Args:
-        pose_data: Raw pose keypoints (33 points)
-    
+        pose_frames: Ordered list of per-frame landmarks dicts (one rep's
+                     [start_frame, end_frame] range, one track)
+
     Returns:
-        Dict of feature_name -> numerical_value (0-100 scale)
+        Dict of feature_name -> numerical_value (0-100 scale). Empty dict if
+        pose_frames is empty, matching the previous fallback shape.
     """
+    if not pose_frames:
+        return {}
+
     try:
-        # Example feature extraction from pose data
-        # In production, these would be calculated from actual pose keypoints
-        features = {}
-        
-        # Simulate feature extraction
-        features["leg_power"] = np.random.uniform(60, 100)
-        features["core_stability"] = np.random.uniform(60, 100)
-        features["upper_body"] = np.random.uniform(60, 100)
-        features["hip_mobility"] = np.random.uniform(60, 100)
-        features["balance"] = np.random.uniform(60, 100)
-        features["lateral_speed"] = np.random.uniform(60, 100)
-        features["acceleration"] = np.random.uniform(60, 100)
-        features["linear_speed"] = np.random.uniform(60, 100)
-        features["deceleration"] = np.random.uniform(60, 100)
-        features["footwork"] = np.random.uniform(60, 100)
-        features["hand_placement"] = np.random.uniform(60, 100)
-        features["body_control"] = np.random.uniform(60, 100)
-        features["field_vision"] = np.random.uniform(60, 100)
-        features["positioning"] = np.random.uniform(60, 100)
-        features["decision_making"] = np.random.uniform(60, 100)
-        
+        from processing.utils import calculate_keypoint_displacement
+        from processing.fast_trajectory import FastTrajectoryAnalyzer
+
+        max_velocity_norm = settings.MAX_EXPECTED_VELOCITY_NORM
+        centroid_scale = settings.CENTROID_STABILITY_SCALE
+
+        def scale_velocity(v: float) -> float:
+            return float(np.clip((v / max_velocity_norm) * 100.0, 0, 100))
+
+        # --- Velocity-derived features: real frame-to-frame keypoint displacement ---
+        ankle_displacements = []
+        hip_displacements = []
+        for i in range(1, len(pose_frames)):
+            prev_frame, curr_frame = pose_frames[i - 1], pose_frames[i]
+
+            for side in ("left", "right"):
+                key = f"{side}_ankle"
+                if key in prev_frame and key in curr_frame:
+                    ankle_displacements.append(
+                        calculate_keypoint_displacement(
+                            {key: prev_frame[key]}, {key: curr_frame[key]}
+                        )
+                    )
+
+            hip_prev = {k: prev_frame[k] for k in ("left_hip", "right_hip") if k in prev_frame}
+            hip_curr = {k: curr_frame[k] for k in ("left_hip", "right_hip") if k in curr_frame}
+            if hip_prev and hip_curr:
+                hip_displacements.append(calculate_keypoint_displacement(hip_prev, hip_curr))
+
+        mean_ankle_v = float(np.mean(ankle_displacements)) if ankle_displacements else 0.0
+        max_ankle_v = float(np.max(ankle_displacements)) if ankle_displacements else 0.0
+        final_ankle_v = float(ankle_displacements[-1]) if ankle_displacements else 0.0
+        mean_hip_v = float(np.mean(hip_displacements)) if hip_displacements else 0.0
+
+        features: Dict[str, float] = {
+            "linear_speed": scale_velocity(mean_ankle_v),
+            "acceleration": scale_velocity(max_ankle_v),
+            "leg_power": scale_velocity(max_ankle_v),
+            "lateral_speed": scale_velocity(mean_hip_v),
+            # Peak-to-final velocity drop, as a real (if simplified) deceleration proxy.
+            "deceleration": scale_velocity(max(0.0, max_ankle_v - final_ankle_v)),
+        }
+
+        # --- Stability-derived features: inverse of centroid-trajectory variance ---
+        analyzer = FastTrajectoryAnalyzer()
+        frame_shape = (540, 960, 3)  # normalized keypoints, actual pixel size doesn't matter here
+        centroids = np.array([
+            analyzer.extract_center_point(frame, frame_shape) for frame in pose_frames
+        ])
+        centroid_std = float(np.mean(np.std(centroids, axis=0))) if len(centroids) > 1 else 0.0
+        stability_score = float(np.clip(100.0 - centroid_std * centroid_scale, 0, 100))
+
+        features["core_stability"] = stability_score
+        features["balance"] = stability_score
+        features["hip_mobility"] = stability_score
+        features["positioning"] = stability_score
+
+        # --- Placeholder features: no keypoint-only signal exists for these ---
+        # (no ball/field/teammate context available from pose alone). Derived from
+        # mean keypoint confidence across the rep rather than fabricated outright,
+        # but explicitly NOT presented as equally trustworthy as the features above.
+        all_confidences = [
+            kp.get("confidence", 0.0)
+            for frame in pose_frames
+            for kp in frame.values()
+            if isinstance(kp, dict)
+        ]
+        placeholder_score = float(np.clip(np.mean(all_confidences) * 100.0, 0, 100)) if all_confidences else 50.0
+        for name in ("upper_body", "footwork", "hand_placement", "body_control", "field_vision", "decision_making"):
+            features[name] = placeholder_score
+
         return features
-        
+
     except Exception as e:
         logger.warning(f"Feature extraction error: {e}")
         return {}
@@ -173,24 +246,47 @@ def run_biomechanics_stage(
             return False, "FIRESTORE_ERROR"
         
         # ========== Step 2: Extract features from all reps (vectorized) ==========
+        # Rep docs never actually had a "pose_data" field (a previous version of
+        # this stage read rep_data.get("pose_data", {}), which was always {} even
+        # before considering the random-fakery in _extract_pose_features below).
+        # Real keypoints live in the pose subcollection, queried per rep by its
+        # [start_frame, end_frame] range (and by track_id on the multi-player path).
         try:
+            pose_ref = firestore_client.db.collection(
+                settings.COLLECTION_VIDEOS
+            ).document(video_id_safe).collection(settings.COLLECTION_POSE)
+
             reps_features = []
             rep_indices = []
-            
+
             for rep_doc in reps_docs:
                 rep_data = rep_doc.to_dict()
                 rep_index = rep_data.get("rep_index", len(reps_features))
                 rep_indices.append(rep_index)
-                
-                # Extract features from pose data
-                pose_data = rep_data.get("pose_data", {})
-                features = _extract_pose_features(pose_data)
+
+                track_id = rep_data.get("track_id")
+                start_frame = rep_data.get("start_frame", 0)
+                end_frame = rep_data.get("end_frame", 0)
+
+                query = pose_ref.where("frame_index", ">=", start_frame).where(
+                    "frame_index", "<=", end_frame
+                )
+                if track_id is not None:
+                    # Requires a composite Firestore index (track_id ASC, frame_index
+                    # ASC) - first run surfaces a FAILED_PRECONDITION error with a
+                    # console link to auto-create it; see models/README.md.
+                    query = query.where("track_id", "==", track_id)
+
+                pose_docs_for_rep = list(query.order_by("frame_index").stream())
+                pose_frames = [d.to_dict().get("landmarks", {}) for d in pose_docs_for_rep]
+
+                features = _extract_pose_features(pose_frames)
                 reps_features.append(features)
-            
+
             logger.debug(
                 f"[{STAGE_NAME}] Extracted features from {len(reps_features)} reps"
             )
-            
+
         except Exception as e:
             logger.error(f"[{STAGE_NAME}] Feature extraction failed: {e}")
             return False, "FEATURE_EXTRACTION_ERROR"

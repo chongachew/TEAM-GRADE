@@ -18,6 +18,10 @@ COLLECTION_FRAMES = "frames"
 COLLECTION_POSE = "pose"
 COLLECTION_TORSO = "torso"
 COLLECTION_REPS = "reps"
+COLLECTION_CAMERA_MOTION = "camera_motion"
+COLLECTION_DETECTIONS = "detections"
+COLLECTION_TRACKS = "tracks"
+COLLECTION_TRACKS_META = "tracks_meta"
 
 
 def get_utc_timestamp() -> str:
@@ -165,8 +169,14 @@ def write_pose_batch(
                 # Validate frame_index exists
                 if 'frame_index' not in pose:
                     raise ValueError(f"Pose missing 'frame_index': {pose}")
-                
-                frame_id = f"{pose['frame_index']:06d}"
+
+                # Multi-player pipeline (MULTI_PLAYER_TRACKING_ENABLED): pose dicts carry a
+                # track_id and the doc id must disambiguate multiple players in the same
+                # frame. Single-athlete path (track_id absent): unchanged frame-only id.
+                if pose.get('track_id') is not None:
+                    frame_id = f"{pose['frame_index']:06d}_{pose['track_id']:03d}"
+                else:
+                    frame_id = f"{pose['frame_index']:06d}"
                 doc_ref = (
                     db.collection(COLLECTION_VIDEOS)
                     .document(safe_id)
@@ -227,8 +237,12 @@ def write_torso_crops_batch(
                 # Validate frame_index exists
                 if 'frame_index' not in crop:
                     raise ValueError(f"Crop missing 'frame_index': {crop}")
-                
-                frame_id = f"{crop['frame_index']:06d}"
+
+                # See write_pose_batch: composite id when track_id present (multi-player path).
+                if crop.get('track_id') is not None:
+                    frame_id = f"{crop['frame_index']:06d}_{crop['track_id']:03d}"
+                else:
+                    frame_id = f"{crop['frame_index']:06d}"
                 doc_ref = (
                     db.collection(COLLECTION_VIDEOS)
                     .document(safe_id)
@@ -289,8 +303,13 @@ def write_reps_batch(
                 # Validate rep_index exists
                 if 'rep_index' not in rep:
                     raise ValueError(f"Rep missing 'rep_index': {rep}")
-                
-                rep_id = f"{rep['rep_index']:06d}"
+
+                # Multi-player path: rep numbering restarts at 0 per track, so track_id must
+                # be part of the doc id to stay unique across tracks in the same video.
+                if rep.get('track_id') is not None:
+                    rep_id = f"{rep['track_id']:03d}_{rep['rep_index']:04d}"
+                else:
+                    rep_id = f"{rep['rep_index']:06d}"
                 doc_ref = (
                     db.collection(COLLECTION_VIDEOS)
                     .document(safe_id)
@@ -311,6 +330,264 @@ def write_reps_batch(
     except Exception as e:
         logger.error(f"[FS] Failed to write reps: {e}")
         return 0
+
+
+def write_camera_motion_batch(
+    firestore_client,
+    video_id: str,
+    motion_docs: List[Dict[str, Any]],
+    batch_size: int = 100
+) -> int:
+    """Write per-frame camera-motion (homography) data to Firestore in batches.
+
+    Args:
+        firestore_client: Firestore client instance
+        video_id: YouTube video ID (will be sanitized)
+        motion_docs: List of dicts with keys: frame_index, homography_to_prev, homography_to_ref,
+                     translation_x, translation_y, rotation_deg, scale, num_matches, num_inliers,
+                     inlier_ratio, low_confidence (optional)
+        batch_size: Batch size (capped at 500)
+
+    Returns:
+        Number of documents written
+
+    Raises:
+        ValueError: If video_id is invalid
+    """
+    try:
+        safe_id = settings.sanitize_id(video_id)
+        safe_batch_size = max(1, min(batch_size, 500))
+
+        db = firestore_client.db
+        written = 0
+
+        for i in range(0, len(motion_docs), safe_batch_size):
+            batch = db.batch()
+            batch_docs = motion_docs[i : i + safe_batch_size]
+
+            for doc in batch_docs:
+                if 'frame_index' not in doc:
+                    raise ValueError(f"Camera motion doc missing 'frame_index': {doc}")
+
+                doc_id = f"{doc['frame_index']:06d}"
+                doc_ref = (
+                    db.collection(COLLECTION_VIDEOS)
+                    .document(safe_id)
+                    .collection(COLLECTION_CAMERA_MOTION)
+                    .document(doc_id)
+                )
+                batch.set(doc_ref, doc)
+
+            batch.commit()
+            written += len(batch_docs)
+
+        logger.info(f"[FS] Wrote {written} camera_motion documents for {safe_id}")
+        return written
+
+    except ValueError as e:
+        logger.error(f"[FS] Invalid input: {e}")
+        return 0
+    except Exception as e:
+        logger.error(f"[FS] Failed to write camera_motion batch: {e}")
+        return 0
+
+
+def write_detections_batch(
+    firestore_client,
+    video_id: str,
+    detections: List[Dict[str, Any]],
+    batch_size: int = 100
+) -> int:
+    """Write per-frame player detections to Firestore in batches.
+
+    Args:
+        firestore_client: Firestore client instance
+        video_id: YouTube video ID (will be sanitized)
+        detections: List of dicts with keys: frame_index, detection_index, bbox, confidence, class_name
+        batch_size: Batch size (capped at 500)
+
+    Returns:
+        Number of documents written
+
+    Raises:
+        ValueError: If video_id is invalid
+    """
+    try:
+        safe_id = settings.sanitize_id(video_id)
+        safe_batch_size = max(1, min(batch_size, 500))
+
+        db = firestore_client.db
+        written = 0
+
+        for i in range(0, len(detections), safe_batch_size):
+            batch = db.batch()
+            batch_dets = detections[i : i + safe_batch_size]
+
+            for det in batch_dets:
+                if 'frame_index' not in det or 'detection_index' not in det:
+                    raise ValueError(f"Detection missing 'frame_index'/'detection_index': {det}")
+
+                doc_id = f"{det['frame_index']:06d}_{det['detection_index']:02d}"
+                doc_ref = (
+                    db.collection(COLLECTION_VIDEOS)
+                    .document(safe_id)
+                    .collection(COLLECTION_DETECTIONS)
+                    .document(doc_id)
+                )
+                batch.set(doc_ref, det)
+
+            batch.commit()
+            written += len(batch_dets)
+
+        logger.info(f"[FS] Wrote {written} detection documents for {safe_id}")
+        return written
+
+    except ValueError as e:
+        logger.error(f"[FS] Invalid input: {e}")
+        return 0
+    except Exception as e:
+        logger.error(f"[FS] Failed to write detections batch: {e}")
+        return 0
+
+
+def write_tracks_batch(
+    firestore_client,
+    video_id: str,
+    tracks: List[Dict[str, Any]],
+    batch_size: int = 100
+) -> int:
+    """Write per-frame track assignments to Firestore in batches.
+
+    Args:
+        firestore_client: Firestore client instance
+        video_id: YouTube video ID (will be sanitized)
+        tracks: List of dicts with keys: frame_index, track_id, bbox, mask_area_px, confidence,
+                matched_via, occlusion_state, frames_since_last_seen
+        batch_size: Batch size (capped at 500)
+
+    Returns:
+        Number of documents written
+
+    Raises:
+        ValueError: If video_id is invalid
+    """
+    try:
+        safe_id = settings.sanitize_id(video_id)
+        safe_batch_size = max(1, min(batch_size, 500))
+
+        db = firestore_client.db
+        written = 0
+
+        for i in range(0, len(tracks), safe_batch_size):
+            batch = db.batch()
+            batch_tracks = tracks[i : i + safe_batch_size]
+
+            for track in batch_tracks:
+                if 'frame_index' not in track or 'track_id' not in track:
+                    raise ValueError(f"Track doc missing 'frame_index'/'track_id': {track}")
+
+                doc_id = f"{track['frame_index']:06d}_{track['track_id']:03d}"
+                doc_ref = (
+                    db.collection(COLLECTION_VIDEOS)
+                    .document(safe_id)
+                    .collection(COLLECTION_TRACKS)
+                    .document(doc_id)
+                )
+                batch.set(doc_ref, track)
+
+            batch.commit()
+            written += len(batch_tracks)
+
+        logger.info(f"[FS] Wrote {written} track documents for {safe_id}")
+        return written
+
+    except ValueError as e:
+        logger.error(f"[FS] Invalid input: {e}")
+        return 0
+    except Exception as e:
+        logger.error(f"[FS] Failed to write tracks batch: {e}")
+        return 0
+
+
+def upsert_track_meta(
+    firestore_client,
+    video_id: str,
+    track_id: int,
+    fields: Dict[str, Any]
+) -> bool:
+    """Merge-update the per-track summary document (tracks_meta/{track_id}).
+
+    Called repeatedly as tracking proceeds (e.g. to extend last_frame) and later by
+    jersey_ocr_stage / the tracking stage's re-ID hook (e.g. to set jersey_number).
+
+    Args:
+        firestore_client: Firestore client instance
+        video_id: YouTube video ID (will be sanitized)
+        track_id: Track ID
+        fields: Fields to merge into the track_meta doc
+
+    Returns:
+        True if successful
+
+    Raises:
+        ValueError: If video_id is invalid
+    """
+    try:
+        safe_id = settings.sanitize_id(video_id)
+
+        db = firestore_client.db
+        doc_ref = (
+            db.collection(COLLECTION_VIDEOS)
+            .document(safe_id)
+            .collection(COLLECTION_TRACKS_META)
+            .document(f"{track_id:03d}")
+        )
+        doc_ref.set(fields, merge=True)
+
+        return True
+
+    except ValueError as e:
+        logger.error(f"[FS] Invalid video_id: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"[FS] Failed to upsert track_meta: {e}")
+        return False
+
+
+def write_jersey_number_for_track(
+    firestore_client,
+    video_id: str,
+    track_id: int,
+    jersey_number: str,
+    confidence: float,
+    source_frame_id: int
+) -> bool:
+    """Write a detected jersey number to a track's summary document.
+
+    Multi-player equivalent of write_jersey_number (which wrote to the video root doc,
+    only sensible for a single-athlete video).
+
+    Args:
+        firestore_client: Firestore client instance
+        video_id: YouTube video ID (will be sanitized)
+        track_id: Track ID the jersey number was read for
+        jersey_number: Detected jersey number (str)
+        confidence: OCR confidence [0.0-1.0]
+        source_frame_id: Frame where jersey was detected
+
+    Returns:
+        True if successful
+    """
+    success = upsert_track_meta(firestore_client, video_id, track_id, {
+        "jersey_number": jersey_number,
+        "jersey_confidence": confidence,
+        "jersey_source_frame": source_frame_id,
+    })
+    if success:
+        logger.info(
+            f"[FS] Wrote jersey number for track {track_id}: {jersey_number} (conf={confidence:.2f})"
+        )
+    return success
 
 
 def update_stage_status(

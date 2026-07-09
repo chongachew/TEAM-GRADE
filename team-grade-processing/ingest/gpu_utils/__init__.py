@@ -19,6 +19,7 @@ from .frame_extractor import (
     CPUFrameExtractor,
     FrameExtractorFactory,
 )
+from .model_device import resolve_device
 
 __all__ = [
     # GPU Detection
@@ -34,4 +35,6 @@ __all__ = [
     'GPUFrameExtractor',
     'CPUFrameExtractor',
     'FrameExtractorFactory',
+    # Torch model device resolution (detection/tracking stages)
+    'resolve_device',
 ]

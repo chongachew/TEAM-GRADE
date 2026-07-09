@@ -149,34 +149,20 @@ class RepExtractor:
         kp2: Dict[str, Dict[str, float]]
     ) -> float:
         """
-        Calculate total keypoint displacement between frames.
+        Calculate mean keypoint displacement between frames.
 
         Args:
             kp1: First frame keypoints
             kp2: Second frame keypoints
 
         Returns:
-            Total displacement distance
+            Mean displacement distance
+
+        Note: delegates to processing.utils.calculate_keypoint_displacement, the
+        shared implementation also used by biomechanics_stage_vectorized.py.
         """
-        total_displacement = 0.0
-        count = 0
-
-        common_points = set(kp1.keys()) & set(kp2.keys())
-
-        for point_name in common_points:
-            if kp1[point_name].get("confidence", 0) < 0.3:
-                continue
-            if kp2[point_name].get("confidence", 0) < 0.3:
-                continue
-
-            x1, y1 = kp1[point_name]["x"], kp1[point_name]["y"]
-            x2, y2 = kp2[point_name]["x"], kp2[point_name]["y"]
-
-            distance = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-            total_displacement += distance
-            count += 1
-
-        return total_displacement / count if count > 0 else 0.0
+        from processing.utils import calculate_keypoint_displacement
+        return calculate_keypoint_displacement(kp1, kp2)
 
     def _segment_by_motion(
         self,

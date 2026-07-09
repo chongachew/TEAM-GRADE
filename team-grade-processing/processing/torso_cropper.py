@@ -296,6 +296,51 @@ class TorsoCropper:
             return []
 
 
+def crop_torso_region_from_bbox(
+    frame: np.ndarray,
+    bbox: List[float],
+    torso_top_ratio: float = 0.15,
+    torso_bottom_ratio: float = 0.55,
+) -> Optional[np.ndarray]:
+    """Crop an approximate torso region directly from a full-person bounding box,
+    with no pose keypoints required.
+
+    Used by the tracking stage's opportunistic re-ID hook: at tracking time
+    (before the pose stage has run) only a detection bbox is available, not the
+    keypoints TorsoCropper.crop_torso() needs. This takes the vertical band where
+    a jersey number typically sits (chest, below the head, above the waist) - a
+    coarser heuristic than the keypoint-driven crop used later in the pipeline,
+    appropriate for an opportunistic check rather than the main jersey_ocr stage.
+
+    Args:
+        frame: Full video frame (BGR)
+        bbox: [x1, y1, x2, y2] person bounding box in pixel coordinates
+        torso_top_ratio: Top of the torso band as a fraction of bbox height
+        torso_bottom_ratio: Bottom of the torso band as a fraction of bbox height
+
+    Returns:
+        Cropped region, or None if the bbox is degenerate
+    """
+    if frame is None or frame.size == 0:
+        return None
+
+    x1, y1, x2, y2 = [int(v) for v in bbox]
+    height, width = frame.shape[:2]
+    x1, x2 = max(0, x1), min(width, x2)
+    y1, y2 = max(0, y1), min(height, y2)
+    if x2 <= x1 or y2 <= y1:
+        return None
+
+    box_height = y2 - y1
+    torso_y1 = y1 + int(box_height * torso_top_ratio)
+    torso_y2 = y1 + int(box_height * torso_bottom_ratio)
+    if torso_y2 <= torso_y1:
+        return None
+
+    crop = frame[torso_y1:torso_y2, x1:x2].copy()
+    return crop if crop.size > 0 else None
+
+
 def visualize_torso_box(
     frame: np.ndarray,
     bbox: Tuple[int, int, int, int],

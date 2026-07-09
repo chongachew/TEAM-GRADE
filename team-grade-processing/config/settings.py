@@ -22,6 +22,9 @@ from typing import Optional
 # Project root (team-grade-processing directory)
 PROJECT_ROOT = Path(__file__).parent.parent
 
+# Config directory (used by biomechanics trait-config loading)
+CONFIG_ROOT = PROJECT_ROOT / "config"
+
 # Firestore credentials
 FIRESTORE_CREDENTIALS = PROJECT_ROOT / "credentials" / "service-account.json"
 
@@ -41,6 +44,9 @@ PIPELINE_STAGES = [
     "metadata",
     "download",
     "frame_extraction",
+    "motion_compensation",
+    "detection",
+    "tracking",
     "pose",
     "torso_crop",
     "jersey_ocr",
@@ -48,6 +54,11 @@ PIPELINE_STAGES = [
     "biomechanics",
     "complete"
 ]
+
+# Master switch for the multi-player detection/tracking/motion-compensation stages.
+# When false (default), frame_extraction enqueues straight to "pose" and the pipeline
+# behaves exactly as it did before this pivot (single athlete, num_poses=1).
+MULTI_PLAYER_TRACKING_ENABLED = os.getenv("MULTI_PLAYER_TRACKING_ENABLED", "false").lower() in ["true", "1", "yes"]
 
 # ============================================================================
 # ENVIRONMENT & DEBUG
@@ -73,6 +84,7 @@ COLLECTION_FRAMES = "frames"
 COLLECTION_REPS = "reps"
 COLLECTION_TORSO = "torso"
 COLLECTION_TORSO_CROPS = "torso_crops"
+COLLECTION_ANALYSIS = "analysis"
 
 # Backward compatibility aliases
 VIDEOS_COLLECTION = COLLECTION_VIDEOS
@@ -113,6 +125,10 @@ POSE_PROGRESS_LOG_INTERVAL = 50  # Log progress every N frames
 POSE_KEYPOINT_COUNT = 33  # BlazePose returns 33 keypoints
 POSE_BATCH_FRAME_COUNT = 10  # Process N frames per batch
 
+# Multi-player pose settings (used when MULTI_PLAYER_TRACKING_ENABLED)
+POSE_MAX_PLAYERS = int(os.getenv("POSE_MAX_PLAYERS", 12))  # num_poses passed to MediaPipe
+POSE_TRACK_IOU_THRESHOLD = float(os.getenv("POSE_TRACK_IOU_THRESHOLD", 0.3))  # min IoU to assign a pose to a track
+
 # Min/max thresholds for keypoint filtering
 POSE_KEYPOINT_MIN_CONFIDENCE = 0.7
 POSE_KEYPOINT_MAX_CONFIDENCE = 1.0
@@ -152,6 +168,51 @@ JERSEY_NUMBER_MAX = 99
 JERSEY_VALID_REGEX = r"^\d{1,2}$"  # 0-99
 
 # ============================================================================
+# MOTION COMPENSATION SETTINGS
+# ============================================================================
+
+MOTION_COMPENSATION_MAX_CORNERS = 200  # goodFeaturesToTrack maxCorners
+MOTION_COMPENSATION_RANSAC_REPROJ_THRESHOLD = 3.0  # findHomography RANSAC threshold (px)
+MOTION_COMPENSATION_MIN_INLIER_RATIO = float(os.getenv("MOTION_COMPENSATION_MIN_INLIER_RATIO", 0.3))
+# Below this inlier ratio, fall back to identity homography for that frame (likely a scene cut).
+
+# ============================================================================
+# DETECTION SETTINGS (RF-DETR)
+# ============================================================================
+
+DETECTION_USE_GPU = os.getenv("DETECTION_USE_GPU", "false").lower() in ["true", "1", "yes"]
+# RF-DETR segmentation variant size: "nano", "small", "medium", "large", "xlarge", "2xlarge".
+# "medium" is the Phase 1 default (accuracy/speed middle ground on pretrained COCO weights).
+DETECTION_MODEL_SIZE = os.getenv("DETECTION_MODEL_SIZE", "medium")
+DETECTION_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTION_CONFIDENCE_THRESHOLD", 0.5))
+DETECTION_CLASS_NAMES = ["person"]  # Phase 1: pretrained COCO "person" class, zero-shot
+DETECTION_BATCH_SIZE = 50
+
+# ============================================================================
+# TRACKING SETTINGS (SAM2 + density-aware memory bank)
+# ============================================================================
+
+TRACKING_USE_GPU = os.getenv("TRACKING_USE_GPU", "false").lower() in ["true", "1", "yes"]
+TRACKING_MAX_LOST_FRAMES_ISOLATED = int(os.getenv("TRACKING_MAX_LOST_FRAMES_ISOLATED", 10))
+TRACKING_MAX_LOST_FRAMES_DENSE = int(os.getenv("TRACKING_MAX_LOST_FRAMES_DENSE", 45))
+TRACKING_DENSITY_IOU_THRESHOLD = float(os.getenv("TRACKING_DENSITY_IOU_THRESHOLD", 0.35))
+TRACKING_MEMORY_UPDATE_MIN_MOTION = float(os.getenv("TRACKING_MEMORY_UPDATE_MIN_MOTION", 2.0))
+TRACKING_MEMORY_STATIC_IOU_THRESHOLD = 0.9  # skip memory-bank update if IoU vs last banked frame exceeds this
+TRACKING_OCCLUDED_CONFIDENCE_THRESHOLD = 0.4  # below this confidence, treat detection as occluded
+TRACKING_MATCH_IOU_THRESHOLD = float(os.getenv("TRACKING_MATCH_IOU_THRESHOLD", 0.3))  # min IoU for frame-to-frame continuity match
+TRACKING_REID_SIMILARITY_THRESHOLD = float(os.getenv("TRACKING_REID_SIMILARITY_THRESHOLD", 0.7))  # min appearance similarity for long-gap re-association
+TRACKING_BATCH_SIZE = 100
+REID_OCR_TRIGGER_GAP_FRAMES = int(os.getenv("REID_OCR_TRIGGER_GAP_FRAMES", 45))
+
+# SAM2 checkpoint (downloaded separately - not bundled with the sam2 pip package;
+# see models/README.md). Config file path is relative to the sam2 package's bundled
+# configs/ directory (hydra-resolved), not a filesystem path.
+SAM2_CHECKPOINT_PATH = os.getenv(
+    "SAM2_CHECKPOINT_PATH", str(PROJECT_ROOT / "models" / "sam2.1_hiera_tiny.pt")
+)
+SAM2_CONFIG_FILE = os.getenv("SAM2_CONFIG_FILE", "configs/sam2.1/sam2.1_hiera_t.yaml")
+
+# ============================================================================
 # REP EXTRACTION SETTINGS
 # ============================================================================
 
@@ -162,8 +223,18 @@ REP_EXTRACTOR_CONFIG = {
     "max_rep_duration": int(os.getenv("REP_MAX_DURATION", 300))
 }
 
+# Bare aliases of REP_EXTRACTOR_CONFIG's values — rep_extraction_stage.py constructs
+# RepExtractor/FastTrajectoryAnalyzer with these as keyword args, not the dict itself.
+REP_MAX_STATIC_FRAMES = REP_EXTRACTOR_CONFIG["max_static_frames"]
+REP_MAX_GAP_FRAMES = REP_EXTRACTOR_CONFIG["max_gap_frames"]
+REP_MIN_DURATION = REP_EXTRACTOR_CONFIG["min_rep_duration"]
+REP_MAX_DURATION = REP_EXTRACTOR_CONFIG["max_rep_duration"]
+
 REP_EXTRACTION_BATCH_SIZE = 10
 REP_PROGRESS_LOG_INTERVAL = 10  # Log progress every N reps
+
+# Default position label for a tracked player when no team/roster context is available.
+DEFAULT_PLAYER_POSITION = "UNKNOWN"
 
 # ============================================================================
 # BIOMECHANICS ANALYSIS SETTINGS
@@ -177,6 +248,17 @@ TRENCH_ENGINE_MODULE = "biomechanics_engine.trench_engine"
 TRAIT_SCORE_MIN = 0.0
 TRAIT_SCORE_MAX = 100.0
 TRAIT_SCORE_DECIMAL_PLACES = 2
+
+# Normalized-coordinate velocity (units/frame) treated as "max expected" when scaling
+# real keypoint-displacement-derived features (linear_speed, acceleration, etc.) to the
+# 0-100 trait band. A reasoned Phase-1 estimate, not yet validated against real footage
+# with known field dimensions (see plan Phase 2).
+MAX_EXPECTED_VELOCITY_NORM = float(os.getenv("MAX_EXPECTED_VELOCITY_NORM", 0.15))
+
+# Scales normalized-coordinate centroid-trajectory std-dev into a 0-100 point
+# deduction for stability-derived features (core_stability, balance, hip_mobility,
+# positioning). Same "reasoned Phase-1 estimate" caveat as MAX_EXPECTED_VELOCITY_NORM.
+CENTROID_STABILITY_SCALE = float(os.getenv("CENTROID_STABILITY_SCALE", 300.0))
 
 # ============================================================================
 # WORKER CONFIGURATION
@@ -258,6 +340,13 @@ ERROR_CODES = {
     "FRAME_PROCESSING_ERROR": "Error processing frame batch",
     "REP_FORMATTING_ERROR": "Error formatting rep data",
     "CROPPER_INIT_FAILED": "Failed to initialize cropper",
+    "MOTION_ESTIMATION_FAILED": "Camera motion estimation failed",
+    "DETECTION_MODEL_LOAD_FAILED": "Failed to load player detection model",
+    "DETECTION_FAILED": "Player detection failed",
+    "TRACKING_MODEL_LOAD_FAILED": "Failed to load tracking model",
+    "TRACKING_FAILED": "Player tracking failed",
+    "DETECTIONS_NOT_FOUND": "No detections found for video",
+    "TRACKS_NOT_FOUND": "No tracks found for video",
     
     # Firestore errors
     "FIRESTORE_ERROR": "Firestore operation failed",

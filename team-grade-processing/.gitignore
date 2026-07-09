@@ -15,6 +15,14 @@ extracted_frames/
 torso_crops/
 logs/
 
+# Model checkpoints (downloaded separately, not committed - see models/README.md)
+models/*.pt
+models/*.pth
+
+# Test fixture videos (downloaded separately, not committed - see tests/fixtures/README.md)
+tests/fixtures/*.avi
+tests/fixtures/*.mp4
+
 # Python
 __pycache__/
 *.py[cod]
@@ -24,6 +32,7 @@ __pycache__/
 env/
 venv/
 ENV/
+.venv-tracking/
 build/
 develop-eggs/
 dist/

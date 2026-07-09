@@ -34,9 +34,11 @@ jobs:
 
     - name: Install dependencies
       working-directory: ./team-grade-processing
+      # See python-tests.yml: "../requirements.txt" resolved to the wrong
+      # (repo-root) file; fixed to install this directory's own requirements.
       run: |
         python -m pip install --upgrade pip
-        pip install -r ../requirements.txt
+        pip install -r requirements.txt
         pip install pytest pytest-cov firebase-admin
 
     - name: Set Firestore Emulator
@@ -59,12 +61,16 @@ jobs:
         kill $SERVER_PID
 
     - name: Test Firestore emulator connection
+      # NOTE: the embedded Python lines below must stay indented at least as
+      # much as this comment - unindented (column-1) lines break out of the
+      # YAML block scalar entirely, which made this whole file invalid YAML
+      # (confirmed: fails to parse even before any of this session's changes).
       run: |
         python -c "
-import os
-os.environ['FIRESTORE_EMULATOR_HOST'] = 'localhost:8081'
-from google.cloud import firestore
-db = firestore.Client(project='test-project')
-list(db.collection('_healthcheck').limit(1).stream())
-print('Firestore emulator connection OK')
+        import os
+        os.environ['FIRESTORE_EMULATOR_HOST'] = 'localhost:8081'
+        from google.cloud import firestore
+        db = firestore.Client(project='test-project')
+        list(db.collection('_healthcheck').limit(1).stream())
+        print('Firestore emulator connection OK')
         "

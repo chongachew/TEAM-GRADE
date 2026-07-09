@@ -147,29 +147,43 @@ def run_torso_crop_stage(
                     pose_data = pose_doc.to_dict()
                     frame_index = pose_data.get("frame_index")
                     landmarks = pose_data.get("landmarks", [])
-                    
+                    track_id = pose_data.get("track_id")  # None on the single-athlete path
+
                     if frame_index >= len(frame_paths):
                         continue
-                    
+
                     frame = cv2.imread(str(frame_paths[frame_index]))
                     if frame is None:
                         logger.debug(f"[{STAGE_NAME}] Skipped unreadable frame: {frame_index}")
                         continue
-                    
-                    # Crop torso region using landmarks
-                    crop, crop_box = cropper.crop_torso(frame, landmarks)
-                    
+
+                    # Crop torso region using landmarks.
+                    # NOTE: crop_torso() returns a single Optional[np.ndarray], not
+                    # a (crop, box) tuple - a pre-existing bug (confirmed by reading
+                    # processing/torso_cropper.py directly) meant this line always
+                    # raised on unpacking, silently caught by the per-frame except
+                    # below, so torso_crop_stage never produced a crop regardless
+                    # of the separate BASE_DIR bug fixed elsewhere in this file.
+                    crop = cropper.crop_torso(frame, landmarks)
+                    crop_box = cropper.get_torso_box(landmarks, frame.shape)
+
                     if crop is not None and crop.shape[0] > 0 and crop.shape[1] > 0:
-                        crop_path = torso_dir / f"torso_{frame_index:06d}.jpg"
+                        if track_id is not None:
+                            crop_path = torso_dir / f"torso_{frame_index:06d}_{track_id:03d}.jpg"
+                        else:
+                            crop_path = torso_dir / f"torso_{frame_index:06d}.jpg"
                         cv2.imwrite(str(crop_path), crop)
-                        
+
                         crops_created += 1
-                        torso_crops.append({
+                        crop_doc = {
                             "frame_index": frame_index,
-                            "crop_path": str(crop_path.relative_to(settings.BASE_DIR)),
+                            "crop_path": str(crop_path.relative_to(settings.PROJECT_ROOT)),
                             "crop_box": crop_box,
                             "created_at": get_utc_timestamp()
-                        })
+                        }
+                        if track_id is not None:
+                            crop_doc["track_id"] = track_id
+                        torso_crops.append(crop_doc)
                     
                     if crops_created % settings.POSE_PROGRESS_LOG_INTERVAL == 0:
                         logger.info(f"[{STAGE_NAME}] Progress", extra={

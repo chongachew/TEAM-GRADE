@@ -14,8 +14,10 @@ ingest/
   queue_manager.py        # enqueue/dequeue, retry/backoff bookkeeping
   ingest_worker.py         # POST /api/ingest's primary ingestion path
   ingest_pipeline_worker.py # the long-running worker: polls the queue, dispatches stages
-  stages/                  # the 9 pipeline stages (see below)
+  stages/                  # the pipeline stages (see below)
+  tracking/                # SAM2 density-aware memory tracker (used by stages/tracking_stage.py)
   gpu_utils/                # CUDA detection with automatic CPU fallback
+models/                   # gitignored model checkpoints (SAM2 weights - see models/README.md)
 config/
   settings.py              # paths, Firestore project/collection names, tunables
   constants.py              # canonical stage-name constants (STAGE_POSE, etc. — use these,
@@ -28,12 +30,20 @@ tests/                      # pytest suite, Firestore/worker singletons mocked
 
 ## Pipeline stages
 
-`metadata → download → frame_extraction → pose → torso_crop → jersey_ocr → rep_extraction → biomechanics → complete`
+`metadata → download → frame_extraction → [motion_compensation → detection → tracking] → pose → torso_crop → jersey_ocr → rep_extraction → biomechanics → complete`
 
 `frame_extraction`, `pose`, and `biomechanics` each have a performance-optimized variant
 (`frame_extraction_stage_gpu.py`, `pose_stage_lite.py`, `biomechanics_stage_vectorized.py`)
 that's what actually runs today — see `BENCHMARK_RESULTS.txt` for the measured per-stage
 improvements.
+
+The bracketed stages (`motion_compensation_stage.py`, `detection_stage.py`,
+`tracking_stage.py`) only run when `settings.MULTI_PLAYER_TRACKING_ENABLED` is true
+(default off — `frame_extraction` enqueues straight to `pose` otherwise, same as before
+this pivot). When on, they cancel camera motion, detect every player per frame (RF-DETR),
+and assign each a persistent `track_id` (SAM2 memory tracker, `ingest/tracking/`) so
+`rep_extraction`/`biomechanics` can score players independently instead of assuming one
+athlete. See the root README's "How it works" section for the fuller explanation.
 
 ## Running it
 

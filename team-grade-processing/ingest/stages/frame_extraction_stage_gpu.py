@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # Stage name constants
 STAGE_NAME = "frame_extraction"
-STAGE_NEXT = "pose"
+STAGE_NEXT = "motion_compensation" if getattr(settings, "MULTI_PLAYER_TRACKING_ENABLED", False) else "pose"
 
 
 def run_frame_extraction_stage(

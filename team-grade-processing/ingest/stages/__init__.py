@@ -24,6 +24,10 @@ from .metadata_stage import run_metadata_stage
 from .download_stage import run_download_stage
 # Phase 3 Week 2: GPU-accelerated frame extraction
 from .frame_extraction_stage_gpu import run_frame_extraction_stage
+# Multi-player pivot: motion compensation / detection / tracking, ahead of pose
+from .motion_compensation_stage import run_motion_compensation_stage
+from .detection_stage import run_detection_stage
+from .tracking_stage import run_tracking_stage
 # Phase 3 Week 3: Lightweight pose model (2MB, 2x faster)
 from .pose_stage_lite import run_pose_stage_lite as run_pose_stage
 from .torso_crop_stage import run_torso_crop_stage
@@ -43,6 +47,7 @@ _import_from_config = False
 try:
     from config.constants import (
         STAGE_METADATA, STAGE_DOWNLOAD, STAGE_FRAME_EXTRACTION,
+        STAGE_MOTION_COMPENSATION, STAGE_DETECTION, STAGE_TRACKING,
         STAGE_POSE, STAGE_TORSO_CROP, STAGE_JERSEY_OCR,
         STAGE_REP_EXTRACTION, STAGE_BIOMECHANICS, STAGE_COMPLETE
     )
@@ -54,6 +59,9 @@ except ImportError as e:
     STAGE_METADATA = "metadata"
     STAGE_DOWNLOAD = "download"
     STAGE_FRAME_EXTRACTION = "frame_extraction"
+    STAGE_MOTION_COMPENSATION = "motion_compensation"
+    STAGE_DETECTION = "detection"
+    STAGE_TRACKING = "tracking"
     STAGE_POSE = "pose"
     STAGE_TORSO_CROP = "torso_crop"
     STAGE_JERSEY_OCR = "jersey_ocr"
@@ -66,6 +74,7 @@ def _validate_stage_constants():
     """Validate all stage name constants are non-empty strings."""
     stages = [
         STAGE_METADATA, STAGE_DOWNLOAD, STAGE_FRAME_EXTRACTION,
+        STAGE_MOTION_COMPENSATION, STAGE_DETECTION, STAGE_TRACKING,
         STAGE_POSE, STAGE_TORSO_CROP, STAGE_JERSEY_OCR,
         STAGE_REP_EXTRACTION, STAGE_BIOMECHANICS, STAGE_COMPLETE
     ]
@@ -85,6 +94,9 @@ __all__ = [
     "run_metadata_stage",
     "run_download_stage",
     "run_frame_extraction_stage",
+    "run_motion_compensation_stage",
+    "run_detection_stage",
+    "run_tracking_stage",
     "run_pose_stage",
     "run_torso_crop_stage",
     "run_jersey_ocr_stage",
@@ -95,6 +107,9 @@ __all__ = [
     "STAGE_METADATA",
     "STAGE_DOWNLOAD",
     "STAGE_FRAME_EXTRACTION",
+    "STAGE_MOTION_COMPENSATION",
+    "STAGE_DETECTION",
+    "STAGE_TRACKING",
     "STAGE_POSE",
     "STAGE_TORSO_CROP",
     "STAGE_JERSEY_OCR",
@@ -113,6 +128,9 @@ STAGE_HANDLERS = {
     STAGE_METADATA: run_metadata_stage,
     STAGE_DOWNLOAD: run_download_stage,
     STAGE_FRAME_EXTRACTION: run_frame_extraction_stage,
+    STAGE_MOTION_COMPENSATION: run_motion_compensation_stage,
+    STAGE_DETECTION: run_detection_stage,
+    STAGE_TRACKING: run_tracking_stage,
     STAGE_POSE: run_pose_stage,
     STAGE_TORSO_CROP: run_torso_crop_stage,
     STAGE_JERSEY_OCR: run_jersey_ocr_stage,
@@ -141,6 +159,9 @@ STAGE_SEQUENCE = [
     STAGE_METADATA,
     STAGE_DOWNLOAD,
     STAGE_FRAME_EXTRACTION,
+    STAGE_MOTION_COMPENSATION,
+    STAGE_DETECTION,
+    STAGE_TRACKING,
     STAGE_POSE,
     STAGE_TORSO_CROP,
     STAGE_JERSEY_OCR,

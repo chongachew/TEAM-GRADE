@@ -2,7 +2,10 @@ google-cloud-firestore>=2.11.0
 firebase-admin>=6.2.0
 opencv-python>=4.8.0
 numpy>=1.24.0
-mediapipe==0.8.11
+# Pin bumped from 0.8.11: the Tasks API (vision.PoseLandmarkerOptions,
+# PoseLandmarker.create_from_options) used in processing/lightweight_pose.py requires
+# mediapipe>=0.10.x; 0.8.11 predates that API and was never actually compatible.
+mediapipe>=0.10.14,<0.11.0
 easyocr>=1.7.0
 ultralytics>=8.0.0
 paddleocr>=2.7.0
@@ -14,3 +17,14 @@ yt-dlp>=2023.12.0
 fastapi>=0.104.0
 uvicorn>=0.24.0
 pydantic>=2.0.0
+
+# --- Multi-player detection/tracking/motion-compensation pivot ---
+# torch/torchvision explicit pin: previously only pulled in transitively via
+# ultralytics with no direct pin. sam2>=1.1.0 requires torch>=2.5.1; verified
+# working together (CPU wheels) in .venv-tracking on 2026-07-08:
+#   torch==2.13.0+cpu, torchvision==0.28.0+cpu, rfdetr==1.8.3, sam2==1.1.0
+torch>=2.5.1
+torchvision>=0.20.0
+rfdetr>=1.0.0
+sam2>=1.1.0
+supervision>=0.24.0
