@@ -50,6 +50,25 @@ function App() {
     return () => clearInterval(pollRef.current);
   }, []);
 
+  // Resume-in-progress: a video submitted elsewhere (e.g. the-bridge.app's
+  // landing page hero) hands off here via ?video_id=, rather than through
+  // this app's own ingest form - skip straight to polling that video.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const resumeVideoId = params.get("video_id");
+    if (!resumeVideoId) return;
+
+    setVideoId(resumeVideoId);
+    setPhase("processing");
+    startPolling(resumeVideoId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function startPolling(id) {
+    pollStatus(id);
+    pollRef.current = setInterval(() => pollStatus(id), POLL_INTERVAL_MS);
+  }
+
   async function pollStatus(id) {
     try {
       const data = await getStatus(id);
@@ -84,8 +103,7 @@ function App() {
       setVideoId(result.video_id);
       setPhase("processing");
 
-      pollStatus(result.video_id);
-      pollRef.current = setInterval(() => pollStatus(result.video_id), POLL_INTERVAL_MS);
+      startPolling(result.video_id);
     } catch (err) {
       setErrorMessage(err.message);
       setPhase("error");

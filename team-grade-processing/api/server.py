@@ -5,12 +5,13 @@ Provides REST API layer for the YouTube ingestion worker system.
 
 import logging
 import os
+import secrets
 import sys
 import subprocess
 from typing import Optional, Dict, Any
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -71,13 +72,20 @@ from ingest.youtube_metadata import YouTubeMetadataExtractor
 
 # Import centralized constants
 try:
-    from config.constants import ALL_STAGES
+    from config.constants import ALL_STAGES, STAGE_STATUS_SKIPPED
 except ImportError:
     # Fallback if constants not available
     ALL_STAGES = [
         "metadata", "download", "frame_extraction", "pose",
         "torso_crop", "jersey_ocr", "rep_extraction", "biomechanics", "complete"
     ]
+    STAGE_STATUS_SKIPPED = "skipped"
+
+from config import settings
+# Reuses the exact same conditional this stage already computes for a normal
+# download, rather than duplicating the WHISTLE_DETECTION_ENABLED check here.
+from ingest.stages.download_stage import STAGE_NEXT as UPLOAD_FIRST_STAGE
+from ingest.utils.firestore_utils import get_utc_timestamp
 
 # Configure logging
 logging.basicConfig(
@@ -505,6 +513,104 @@ async def ingest_video(request: IngestRequest) -> IngestResponse:
         raise HTTPException(
             status_code=500,
             detail=f"Ingestion failed: {str(e)}"
+        )
+
+
+@app.post("/api/ingest/upload", response_model=IngestResponse)
+async def ingest_uploaded_file(
+    file: UploadFile = File(...),
+    team_id: Optional[str] = Form(None),
+    player_number: Optional[int] = Form(None),
+    position: Optional[str] = Form(None),
+) -> IngestResponse:
+    """
+    Ingest a directly-uploaded video file (no YouTube/yt-dlp source).
+
+    The file is already local, so this skips the "download" stage (and
+    "metadata", since there's no YouTube metadata to fetch) and enqueues
+    straight at whatever stage a normal download would have enqueued next -
+    the pipeline behaves identically to a normal video from that point on.
+
+    Raises:
+        HTTPException: If no file is provided or ingestion fails.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    if not firestore_client or not queue_manager:
+        raise HTTPException(
+            status_code=503,
+            detail="Firestore client or queue manager not available"
+        )
+
+    try:
+        # Random 11-char ID using VideoIdValidator's exact allowed alphabet
+        # (A-Za-z0-9_-) - passes validation unchanged, no validator loosening
+        # needed for uploads specifically.
+        video_id = secrets.token_urlsafe(9)[:11]
+
+        video_path = settings.get_video_path(video_id)
+        contents = await file.read()
+        video_path.write_bytes(contents)
+
+        skipped_at = get_utc_timestamp()
+        basic_metadata: Dict[str, Any] = {
+            "video_url": f"uploaded:{file.filename}",
+            "video_id": video_id,
+            "status": VideoStatus.PENDING.value,
+            "timestamp": datetime.now().isoformat(),
+            "download_path": str(video_path),
+            "stages": {
+                stage: {"status": "pending"}
+                for stage in ALL_STAGES
+            },
+        }
+        # metadata/download don't apply to an upload - they didn't run, not
+        # "pending" work still to be done.
+        basic_metadata["stages"]["metadata"] = {
+            "status": STAGE_STATUS_SKIPPED,
+            "completed_at": skipped_at,
+        }
+        basic_metadata["stages"]["download"] = {
+            "status": STAGE_STATUS_SKIPPED,
+            "path": str(video_path),
+            "file_size_bytes": len(contents),
+            "completed_at": skipped_at,
+        }
+        if team_id:
+            basic_metadata["team_id"] = team_id
+        if player_number:
+            basic_metadata["player_number"] = player_number
+        if position:
+            basic_metadata["position"] = position
+
+        if not firestore_client.save_video_metadata(video_id, basic_metadata):
+            raise HTTPException(status_code=500, detail="Failed to save video metadata")
+
+        if not queue_manager.enqueue_video(
+            video_id,
+            stage=UPLOAD_FIRST_STAGE,
+            priority=settings.QUEUE_DEFAULT_PRIORITY,
+            metadata={"source": "upload", "previous_stage": "download"}
+        ):
+            raise HTTPException(status_code=500, detail="Failed to queue uploaded video")
+
+        logger.info(f"[OK] Ingested uploaded file as {video_id}, queued at {UPLOAD_FIRST_STAGE}")
+
+        return IngestResponse(
+            status="queued",
+            video_id=video_id,
+            message="Uploaded video queued for processing",
+            timestamp=datetime.now().isoformat()
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[FAIL] Upload ingestion error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Upload ingestion failed: {str(e)}"
         )
 
 

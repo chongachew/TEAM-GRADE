@@ -183,3 +183,64 @@ class TestVideoStatusEndpoint:
             response = client.get("/api/ingest/dQw4w9WgXcQ/status")
 
             assert response.status_code == 500
+
+
+class TestIngestUploadEndpoint:
+    """Test POST /api/ingest/upload endpoint."""
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_upload_success_skips_metadata_and_download(self, client, tmp_path):
+        fake_video_path = tmp_path / "fake_upload.mp4"
+
+        with patch("api.server.firestore_client") as mock_fs, \
+             patch("api.server.queue_manager") as mock_queue, \
+             patch("config.settings.get_video_path", return_value=fake_video_path):
+            mock_fs.save_video_metadata.return_value = True
+            mock_queue.enqueue_video.return_value = True
+
+            response = client.post(
+                "/api/ingest/upload",
+                files={"file": ("game_film.mp4", b"fake video bytes", "video/mp4")},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "queued"
+            assert len(data["video_id"]) == 11
+
+            # The uploaded bytes actually got written to the resolved path.
+            assert fake_video_path.read_bytes() == b"fake video bytes"
+
+            saved_id, saved_metadata = mock_fs.save_video_metadata.call_args[0]
+            assert saved_metadata["stages"]["metadata"]["status"] == "skipped"
+            assert saved_metadata["stages"]["download"]["status"] == "skipped"
+            assert saved_metadata["download_path"] == str(fake_video_path)
+
+            enqueue_kwargs = mock_queue.enqueue_video.call_args
+            assert enqueue_kwargs.args[0] == saved_id
+            assert enqueue_kwargs.kwargs["stage"] in ("whistle_detection", "frame_extraction")
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_upload_missing_file_returns_422(self, client):
+        response = client.post("/api/ingest/upload")
+
+        assert response.status_code == 422
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_upload_firestore_save_failure_returns_500(self, client, tmp_path):
+        fake_video_path = tmp_path / "fake_upload.mp4"
+
+        with patch("api.server.firestore_client") as mock_fs, \
+             patch("api.server.queue_manager"), \
+             patch("config.settings.get_video_path", return_value=fake_video_path):
+            mock_fs.save_video_metadata.return_value = False
+
+            response = client.post(
+                "/api/ingest/upload",
+                files={"file": ("game_film.mp4", b"fake video bytes", "video/mp4")},
+            )
+
+            assert response.status_code == 500
