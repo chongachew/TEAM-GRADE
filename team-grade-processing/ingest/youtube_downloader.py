@@ -26,31 +26,6 @@ class YouTubeDownloader:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Initialized downloader with output dir: {self.output_dir}")
 
-    def validate_youtube_url(self, url: str) -> bool:
-        """
-        Validate if URL is a valid YouTube URL.
-
-        Args:
-            url: URL to validate
-
-        Returns:
-            True if valid
-        """
-        import re
-
-        youtube_patterns = [
-            r"(?:https?://)?(?:www\.)?youtube\.com",
-            r"(?:https?://)?youtu\.be",
-            r"^[a-zA-Z0-9_-]{11}$",  # Raw video ID
-        ]
-
-        for pattern in youtube_patterns:
-            if re.search(pattern, url):
-                return True
-
-        logger.warning(f"Invalid YouTube URL: {url}")
-        return False
-
     def _get_output_filename(self, video_id: str) -> str:
         """
         Generate output filename for video.
@@ -83,10 +58,11 @@ class YouTubeDownloader:
         Returns:
             Path to downloaded file or None if failed
         """
-        # Validate URL
-        if not self.validate_youtube_url(url):
-            logger.error(f"Invalid YouTube URL: {url}")
-            return None
+        # URL validity is the caller's responsibility (download_stage.py
+        # validates via YouTubeMetadataExtractor before ever reaching here) -
+        # this used to re-validate with its own YouTube-only regex, which
+        # would have rejected the very non-YouTube URLs the caller now
+        # accepts upstream.
 
         # Try to import yt-dlp
         try:
@@ -249,12 +225,6 @@ class YouTubeDownloader:
 
 
 # Standalone functions
-def validate_youtube_url(url: str) -> bool:
-    """Standalone function to validate YouTube URL."""
-    downloader = YouTubeDownloader()
-    return downloader.validate_youtube_url(url)
-
-
 def download_video(
     url: str,
     output_dir: Optional[Path] = None,

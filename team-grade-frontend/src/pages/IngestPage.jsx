@@ -35,7 +35,7 @@ export default function IngestPage() {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-lg bg-zinc-900 p-6">
           <label className="flex flex-col gap-1.5 text-sm font-semibold text-zinc-300">
-            YouTube URL
+            Video URL
             <input
               type="text"
               value={videoUrl}
@@ -44,6 +44,9 @@ export default function IngestPage() {
               required
               className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 font-normal text-white placeholder:text-zinc-600"
             />
+            <span className="text-xs font-normal text-zinc-500">
+              YouTube, Vimeo, TikTok, a Google Drive share link, or a direct video link
+            </span>
           </label>
 
           <div className="grid grid-cols-3 gap-3">

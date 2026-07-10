@@ -55,6 +55,7 @@ def run_download_stage(
     **Possible Return Values:**
     - (True, None): Download succeeded
     - (False, "VIDEO_ID_INVALID"): video_id failed validation
+    - (False, "VALIDATION_ERROR"): no video_url stored for this video_id
     - (False, "DOWNLOAD_FAILED"): yt-dlp failed to download
     - (False, "FIRESTORE_ERROR"): Failed to update metadata
     - (False, "QUEUE_ERROR"): Failed to enqueue next stage
@@ -103,7 +104,18 @@ def run_download_stage(
         
         # Validate and sanitize video_id
         video_id_safe = VideoIdValidator.validate(video_id)
-    
+
+        # The original submitted URL (YouTube, Vimeo, TikTok, Google Drive
+        # share, or a direct video-file link) - stored on the video doc at
+        # ingest time by ingest_worker.py / api/server.py. This is what
+        # actually gets downloaded; the 11-char video_id is only TEAM-GRADE's
+        # internal identifier and, for non-YouTube sources, carries no
+        # relationship to the source at all.
+        video_doc = firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(video_id_safe).get()
+        video_url = (video_doc.to_dict() or {}).get("video_url") if video_doc.exists else None
+        if not video_url:
+            raise ValidationError(f"No video_url stored for {video_id_safe}", video_id=video_id_safe)
+
     except ValidationError as e:
         error_code = e.error_code
         logger.warning(f"[{STAGE_NAME}] Validation failed: {e}", extra={
@@ -167,9 +179,13 @@ def run_download_stage(
                 "format": format_spec.split('[')[0] if '[' in format_spec else format_spec,
             })
             
-            # Download with retry logic
+            # Download with retry logic - uses the real source URL (video_url),
+            # not the bare internal video_id. yt-dlp's YouTube extractor
+            # happens to special-case a bare 11-char ID as if it were a full
+            # URL, but no other extractor (Vimeo/TikTok/Drive) does, so the
+            # real URL is required for any non-YouTube source to work at all.
             video_path = downloader.download_video(
-                url=video_id_safe,
+                url=video_url,
                 output_path=output_path,
                 max_retries=max_retries,
                 format_spec=format_spec  # ✅ OPTIMIZATION: Pass adaptive quality format

@@ -4,6 +4,7 @@ Fetches and parses YouTube video metadata for college football games.
 """
 
 import re
+import secrets
 import logging
 from typing import Optional, Dict, Any, Tuple
 from urllib.parse import urlparse, parse_qs
@@ -42,62 +43,105 @@ class YouTubeMetadataExtractor:
         "u of m": "Michigan",
     }
 
+    # Additional video sources yt-dlp already supports natively (blueprint's
+    # "Additional video sources" section). Instagram and Hudl are deliberately
+    # excluded - Instagram's extractor is flaky/high-maintenance, and Hudl has
+    # no scrapable stream at all (the direct-file-upload endpoint is the
+    # intended path for a Hudl export instead).
+    NON_YOUTUBE_HOST_PATTERNS = [
+        r"(?:https?://)?(?:www\.)?vimeo\.com",
+        r"(?:https?://)?(?:www\.|vm\.)?tiktok\.com",
+        r"(?:https?://)?drive\.google\.com",
+    ]
+    DIRECT_FILE_EXTENSIONS = (".mp4", ".m3u8", ".mov", ".webm")
+
     @staticmethod
     def get_video_id(url: str) -> Optional[str]:
         """
-        Extract video ID from YouTube URL.
+        Resolve a submitted URL to TEAM-GRADE's internal 11-char video ID.
+
+        For YouTube URLs (or a bare 11-char ID), returns the real YouTube
+        video ID, preserving today's re-submission/dedup behavior. For every
+        other source this extractor recognizes as valid (see
+        validate_youtube_url - Vimeo, TikTok, Google Drive shares, direct
+        video-file URLs), synthesizes a random 11-char ID using the same
+        scheme the direct-upload endpoint already uses (api/server.py's
+        `secrets.token_urlsafe(9)[:11]`), since those sources' own IDs aren't
+        naturally 11 chars of [A-Za-z0-9_-] and every downstream pipeline
+        stage (VideoIdValidator) requires that exact shape.
 
         Supports formats:
         - https://www.youtube.com/watch?v=VIDEO_ID
         - https://youtu.be/VIDEO_ID
         - https://www.youtube.com/embed/VIDEO_ID
         - VIDEO_ID (raw ID)
+        - Vimeo / TikTok / Google Drive / direct .mp4|.m3u8|.mov|.webm URLs
 
         Args:
-            url: YouTube URL or video ID
+            url: submitted video URL or a raw video ID
 
         Returns:
-            Video ID or None if invalid format
+            11-char internal video ID, or None if the URL isn't recognized
         """
         # Check if it's already a video ID
         if re.match(r"^[a-zA-Z0-9_-]{11}$", url):
             return url
 
         try:
-            # Parse standard YouTube URL
             parsed = urlparse(url)
+            is_youtube_host = bool(parsed.hostname) and (
+                "youtube.com" in parsed.hostname or "youtu.be" in parsed.hostname
+            )
 
-            # Format: watch?v=VIDEO_ID
-            if parsed.hostname and "youtube.com" in parsed.hostname:
-                query = parse_qs(parsed.query)
-                if "v" in query:
-                    return query["v"][0]
+            if is_youtube_host or "/embed/" in url:
+                # Format: watch?v=VIDEO_ID
+                if parsed.hostname and "youtube.com" in parsed.hostname:
+                    query = parse_qs(parsed.query)
+                    if "v" in query:
+                        return query["v"][0]
 
-            # Format: youtu.be/VIDEO_ID
-            elif parsed.hostname and "youtu.be" in parsed.hostname:
-                return parsed.path.lstrip("/")
+                # Format: youtu.be/VIDEO_ID
+                elif parsed.hostname and "youtu.be" in parsed.hostname:
+                    video_id = parsed.path.lstrip("/")
+                    if video_id:
+                        return video_id
 
-            # Format: youtube.com/embed/VIDEO_ID
-            elif "/embed/" in url:
-                match = re.search(r"/embed/([a-zA-Z0-9_-]{11})", url)
-                if match:
-                    return match.group(1)
+                # Format: youtube.com/embed/VIDEO_ID
+                if "/embed/" in url:
+                    match = re.search(r"/embed/([a-zA-Z0-9_-]{11})", url)
+                    if match:
+                        return match.group(1)
+
+                return None  # looked like YouTube but no ID could be extracted
 
         except Exception as e:
-            logger.error(f"Error parsing YouTube URL: {e}")
+            logger.error(f"Error parsing video URL: {e}")
+            return None
+
+        # Not YouTube - synthesize an internal ID for any other source this
+        # extractor recognizes as valid.
+        if YouTubeMetadataExtractor.validate_youtube_url(url):
+            return secrets.token_urlsafe(9)[:11]
 
         return None
 
     @staticmethod
     def validate_youtube_url(url: str) -> bool:
         """
-        Validate if URL is a valid YouTube URL.
+        Validate whether a submitted URL is from a source TEAM-GRADE accepts.
+
+        Despite the name (kept as-is to avoid rippling a rename through the
+        ~10 call/export sites in api/server.py, ingest_worker.py, and
+        ingest/__init__.py), this recognizes every source in the blueprint's
+        "Additional video sources" section - YouTube, Vimeo, TikTok, Google
+        Drive shares, and direct video-file URLs, all of which yt-dlp already
+        supports natively.
 
         Args:
             url: URL to validate
 
         Returns:
-            True if valid YouTube URL
+            True if the URL is from a supported source
         """
         youtube_patterns = [
             r"(?:https?://)?(?:www\.)?youtube\.com",
@@ -109,7 +153,16 @@ class YouTubeMetadataExtractor:
             if re.search(pattern, url):
                 return True
 
-        return False
+        for pattern in YouTubeMetadataExtractor.NON_YOUTUBE_HOST_PATTERNS:
+            if re.search(pattern, url):
+                return True
+
+        try:
+            path = urlparse(url).path.lower()
+        except Exception:
+            return False
+
+        return path.endswith(YouTubeMetadataExtractor.DIRECT_FILE_EXTENSIONS)
 
     @staticmethod
     def normalize_team_name(team: str) -> str:

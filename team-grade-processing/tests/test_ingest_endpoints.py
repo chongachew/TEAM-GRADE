@@ -43,15 +43,44 @@ class TestIngestVideoEndpoint:
     @pytest.mark.endpoints
     @pytest.mark.integration
     def test_ingest_invalid_url(self, client):
-        """Test ingesting a non-YouTube URL returns 400."""
+        """Test ingesting a URL from an unsupported source returns 400."""
         with patch("api.server.metadata_extractor") as mock_meta:
             mock_meta.validate_youtube_url.return_value = False
 
             response = client.post("/api/ingest", json={
-                "video_url": "https://vimeo.com/123456"
+                "video_url": "https://instagram.com/reel/abc123"
             })
 
             assert response.status_code == 400
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_ingest_non_youtube_source_accepted(self, client):
+        """A Vimeo/TikTok/Drive/direct-file URL - any source
+        YouTubeMetadataExtractor recognizes - is accepted the same way a
+        YouTube URL is; api/server.py itself is source-agnostic once
+        validate_youtube_url/get_video_id say yes (see
+        tests/test_youtube_metadata.py for the real, unmocked extractor
+        behavior on these URLs)."""
+        with patch("api.server.metadata_extractor") as mock_meta, \
+             patch("api.server.firestore_client") as mock_fs, \
+             patch("api.server.ingest_worker") as mock_worker:
+            mock_meta.validate_youtube_url.return_value = True
+            mock_meta.get_video_id.return_value = "synth1234ab"
+            mock_fs.check_queue_integrity.side_effect = [
+                {"video_exists": False, "queue_exists": False, "status": None, "stage": None, "error": None},
+                {"video_exists": True, "queue_exists": True, "status": "pending", "stage": "metadata", "error": None},
+            ]
+            mock_worker.ingest_youtube_url.return_value = None
+
+            response = client.post("/api/ingest", json={
+                "video_url": "https://vimeo.com/123456789",
+            })
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["video_id"] == "synth1234ab"
+            assert data["status"] == "queued"
 
     @pytest.mark.endpoints
     @pytest.mark.integration

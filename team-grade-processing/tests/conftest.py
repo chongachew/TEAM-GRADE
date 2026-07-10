@@ -171,13 +171,27 @@ def valid_urls():
 
 @pytest.fixture
 def invalid_urls():
-    """Provide invalid YouTube URLs."""
+    """Provide invalid video URLs - rejected by every supported source."""
     return [
-        "https://vimeo.com/123456789",  # Wrong platform
+        "https://instagram.com/reel/abc123",  # Not a supported source
         "not a url",
         "http://youtube.com",  # No video ID
         "",
         "https://youtube.com/watch?v=",  # Missing ID
+    ]
+
+
+@pytest.fixture
+def valid_non_youtube_urls():
+    """Provide valid URLs from the other sources TEAM-GRADE accepts (see
+    ingest/youtube_metadata.py's NON_YOUTUBE_HOST_PATTERNS/DIRECT_FILE_EXTENSIONS -
+    yt-dlp already supports all of these natively)."""
+    return [
+        "https://vimeo.com/123456789",
+        "https://www.tiktok.com/@user/video/1234567890123456789",
+        "https://drive.google.com/file/d/1a2b3c4d5e6f/view",
+        "https://example.com/videos/game_film.mp4",
+        "https://example.com/videos/game_film.m3u8?token=abc",
     ]
 
 
