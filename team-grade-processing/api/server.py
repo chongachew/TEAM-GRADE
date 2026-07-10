@@ -70,6 +70,9 @@ from ingest.ingest_worker import IngestWorker
 from ingest.firestore_client import FirestoreClient, VideoStatus, IngestStage
 from ingest.youtube_metadata import YouTubeMetadataExtractor
 from ingest.utils.firestore_utils import COLLECTION_TRACKS, COLLECTION_TRACKS_META
+from ingest.stages.biomechanics_stage_vectorized import _extract_pose_features, _load_trait_configs
+from processing.vectorized_traits import VectorizedTraitScorer
+import numpy as np
 
 # Import centralized constants
 try:
@@ -214,6 +217,14 @@ class HealthResponse(BaseModel):
     status: str
     timestamp: str
     components: Dict[str, str]
+
+
+class RepCorrectionRequest(BaseModel):
+    """Request model for manually correcting a rep's start/end boundary."""
+    track_id: int
+    rep_index: int
+    start_frame: int
+    end_frame: int
 
 
 # ============================================================================
@@ -987,6 +998,185 @@ async def get_frame_boxes(video_id: str, frame_index: int) -> Dict[str, Any]:
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"Failed to retrieve frame boxes: {str(e)}")
+
+
+def _recompute_rep_analysis(
+    firestore_client: 'FirestoreClient',
+    safe_video_id: str,
+    rep_index: int,
+    track_id: Optional[int],
+    start_frame: int,
+    end_frame: int,
+) -> Dict[str, Any]:
+    """
+    Recompute a single rep's biomechanics score over a corrected frame range.
+
+    Reuses the exact same logic biomechanics_stage_vectorized.py already runs
+    per-rep on the pipeline's first pass - pose data already covers the whole
+    video (pose_stage_lite runs before rep_extraction ever decides a rep's
+    boundaries), so a corrected boundary is just a different query range, not
+    a re-run of any ML stage.
+
+    Raises:
+        ValueError: If there's no pose data in the new range (would otherwise
+            silently score as all-zero rather than erroring - score_traits_batch
+            doesn't itself fail on empty features).
+    """
+    pose_ref = (
+        firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+        .document(safe_video_id)
+        .collection(settings.COLLECTION_POSE)
+    )
+    query = pose_ref.where("frame_index", ">=", start_frame).where("frame_index", "<=", end_frame)
+    if track_id is not None:
+        query = query.where("track_id", "==", track_id)
+    pose_docs = list(query.order_by("frame_index").stream())
+    pose_frames = [d.to_dict().get("landmarks", {}) for d in pose_docs]
+
+    if not pose_frames:
+        raise ValueError("No pose data found for the corrected frame range")
+
+    features = _extract_pose_features(pose_frames)
+    trait_configs = _load_trait_configs(str(settings.CONFIG_ROOT))
+
+    scorer = VectorizedTraitScorer()
+    trait_scores, trait_names = scorer.score_traits_batch(
+        position="unknown", reps_data=[features], trait_configs=trait_configs
+    )
+    buckets, _ = scorer.bucket_scores_batch(trait_scores)
+
+    return {
+        "rep_index": rep_index,
+        "track_id": track_id,
+        "traits": {trait_names[j]: float(trait_scores[0, j]) for j in range(len(trait_names))},
+        "buckets": {trait_names[j]: str(buckets[0, j]) for j in range(len(trait_names))},
+        "overall_grade": float(np.mean(trait_scores[0, :])),
+    }
+
+
+@app.patch("/api/reps/{video_id}")
+async def correct_rep_boundary(video_id: str, request: RepCorrectionRequest) -> Dict[str, Any]:
+    """
+    Manually correct a rep's start/end frame boundary and recompute its
+    biomechanics score fresh over the new range - one unified boundary that
+    fixes the plays grid, the score, and any highlight clip cut from this rep,
+    all at once (per the blueprint's "Manual play-boundary correction").
+
+    request.track_id uses the same 0-sentinel convention as /api/analysis and
+    /api/tracks: 0 means "single-athlete-mode, no real track_id".
+
+    Raises:
+        HTTPException: 400 for an invalid/too-short range or no pose data in
+            it, 404 if the video or the specific rep doesn't exist
+    """
+    try:
+        safe_video_id = settings.sanitize_id(video_id)
+    except (ValueError, ImportError) as e:
+        logger.warning(f"Invalid video_id format: {e}")
+        raise HTTPException(status_code=400, detail="Invalid video_id format")
+
+    logger.info(f"PATCH /api/reps/{safe_video_id} - rep_index={request.rep_index}")
+
+    if not firestore_client:
+        raise HTTPException(status_code=503, detail="Firestore client not available")
+
+    try:
+        video_data = firestore_client.get_video_status(safe_video_id)
+        if not video_data:
+            raise HTTPException(status_code=404, detail=f"Video {safe_video_id} not found")
+
+        frame_count = video_data.get("frame_count")
+        if not frame_count:
+            raise HTTPException(
+                status_code=409, detail="Video has no known frame count yet (still processing?)"
+            )
+
+        if not (0 <= request.start_frame < request.end_frame < frame_count):
+            raise HTTPException(
+                status_code=400,
+                detail=f"start_frame/end_frame must satisfy 0 <= start < end < {frame_count}",
+            )
+        if request.end_frame - request.start_frame < settings.REP_MIN_DURATION:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Corrected range must be at least {settings.REP_MIN_DURATION} frames",
+            )
+
+        # track_id=0 is the single-athlete-mode sentinel (no real track_id on
+        # the rep doc at all) - same idiom already used by the thumbnail and
+        # analysis endpoints.
+        lookup_track_id = request.track_id if request.track_id else None
+
+        reps_ref = (
+            firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+            .document(safe_video_id)
+            .collection(settings.COLLECTION_REPS)
+        )
+        rep_doc_ref = None
+        for doc in reps_ref.stream():
+            data = doc.to_dict()
+            if data.get("rep_index") != request.rep_index:
+                continue
+            if data.get("track_id") != lookup_track_id:
+                continue
+            rep_doc_ref = doc.reference
+            break
+
+        if rep_doc_ref is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Rep {request.rep_index} (track_id={request.track_id}) not found",
+            )
+
+        try:
+            analysis = _recompute_rep_analysis(
+                firestore_client,
+                safe_video_id,
+                request.rep_index,
+                lookup_track_id,
+                request.start_frame,
+                request.end_frame,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        duration_frames = request.end_frame - request.start_frame
+        duration_seconds = duration_frames / settings.FRAME_EXTRACTION_FPS
+
+        rep_doc_ref.update({
+            "start_frame": request.start_frame,
+            "end_frame": request.end_frame,
+            "duration_frames": duration_frames,
+            "duration_seconds": duration_seconds,
+        })
+
+        analysis_ref = (
+            firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+            .document(safe_video_id)
+            .collection(settings.COLLECTION_ANALYSIS)
+            .document(f"rep_{request.rep_index}")
+        )
+        analysis_ref.set(analysis)
+
+        logger.info(
+            f"[OK] Corrected rep {request.rep_index} boundary for {safe_video_id}: "
+            f"[{request.start_frame}, {request.end_frame}]"
+        )
+
+        return {
+            **analysis,
+            "start_frame": request.start_frame,
+            "end_frame": request.end_frame,
+            "duration_seconds": duration_seconds,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"[FAIL] Rep boundary correction error for {safe_video_id}: {str(e)}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to correct rep boundary: {str(e)}")
 
 
 @app.get("/api/queue")

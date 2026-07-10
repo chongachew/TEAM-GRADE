@@ -1,12 +1,13 @@
 import { useCallback, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getAnalysis, getStatus, getTracks } from "../api";
 import VideoPlayer from "../components/VideoPlayer";
 import BoxOverlay from "../components/BoxOverlay";
 import PlaysGrid from "../components/PlaysGrid";
 import PlayerLibrary from "../components/PlayerLibrary";
 import ClaimBar from "../components/ClaimBar";
+import BoundaryEditor from "../components/BoundaryEditor";
 
 const STAGES = [
   "metadata",
@@ -50,9 +51,11 @@ function StageList({ stages }) {
 
 export default function AnalysisPage() {
   const { videoId } = useParams();
+  const queryClient = useQueryClient();
   const videoRef = useRef(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [claimedTrackId, setClaimedTrackId] = useState(null);
+  const [editingRep, setEditingRep] = useState(null);
 
   const statusQuery = useQuery({
     queryKey: ["status", videoId],
@@ -83,6 +86,23 @@ export default function AnalysisPage() {
       videoRef.current.play().catch(() => {});
     }
   }, []);
+
+  const handleBoundarySaved = useCallback(
+    (updatedRep) => {
+      queryClient.setQueryData(["analysis", videoId], (old) => {
+        if (!old) return old;
+        return {
+          reps: old.reps.map((r) =>
+            r.rep_index === updatedRep.rep_index && r.track_id === updatedRep.track_id
+              ? { ...r, ...updatedRep }
+              : r
+          ),
+        };
+      });
+      setEditingRep(null);
+    },
+    [queryClient, videoId]
+  );
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
@@ -137,8 +157,19 @@ export default function AnalysisPage() {
                 reps={analysisQuery.data?.reps || []}
                 claimedTrackId={claimedTrackId}
                 onSeek={handleSeek}
+                onEditBoundary={setEditingRep}
               />
             </section>
+
+            {editingRep && (
+              <BoundaryEditor
+                videoId={videoId}
+                videoRef={videoRef}
+                rep={editingRep}
+                onSaved={handleBoundarySaved}
+                onCancel={() => setEditingRep(null)}
+              />
+            )}
 
             <section>
               <h2 className="mb-3 font-condensed text-lg font-bold uppercase tracking-wide text-zinc-400">

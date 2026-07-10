@@ -49,3 +49,17 @@ export function thumbnailUrl(videoId, trackId) {
 export function videoUrl(videoId) {
   return `${API_BASE}/media/${videoId}.mp4`;
 }
+
+export async function correctRepBoundary(videoId, { trackId, repIndex, startFrame, endFrame }) {
+  const res = await fetch(`${API_BASE}/api/reps/${videoId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      track_id: trackId,
+      rep_index: repIndex,
+      start_frame: startFrame,
+      end_frame: endFrame,
+    }),
+  });
+  return handleResponse(res);
+}
