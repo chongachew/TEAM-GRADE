@@ -2,6 +2,10 @@
 // the video player to a rep's start_frame.
 const FRAME_EXTRACTION_FPS = 15;
 
+// Neither service is deployed publicly yet, so this points at localhost in
+// dev - mirrors ClaimBar.jsx's REACT_APP_BRIDGE_APP_URL documentation.
+const BRIDGE_APP_URL = process.env.REACT_APP_BRIDGE_APP_URL || "http://localhost:3000";
+
 function bucketClasses(bucket) {
   switch (bucket) {
     case "elite":
@@ -15,7 +19,7 @@ function bucketClasses(bucket) {
   }
 }
 
-export default function PlaysGrid({ reps, claimedTrackId, onSeek, onEditBoundary }) {
+export default function PlaysGrid({ videoId, reps, claimedTrackId, onSeek, onEditBoundary }) {
   if (!reps.length) {
     return <p className="text-sm text-zinc-500">No plays detected yet.</p>;
   }
@@ -55,15 +59,25 @@ export default function PlaysGrid({ reps, claimedTrackId, onSeek, onEditBoundary
               ))}
             </div>
           </button>
-          {onEditBoundary && rep.start_frame != null && (
-            <button
-              type="button"
-              onClick={() => onEditBoundary(rep)}
-              className="self-end text-[10px] uppercase tracking-wide text-zinc-500 hover:text-bridge-gold"
-            >
-              Edit boundary
-            </button>
-          )}
+          <div className="flex items-center justify-end gap-3">
+            {onEditBoundary && rep.start_frame != null && (
+              <button
+                type="button"
+                onClick={() => onEditBoundary(rep)}
+                className="text-[10px] uppercase tracking-wide text-zinc-500 hover:text-bridge-gold"
+              >
+                Edit boundary
+              </button>
+            )}
+            {videoId && rep.start_frame != null && (
+              <a
+                href={`${BRIDGE_APP_URL}/add-to-reel?videoId=${encodeURIComponent(videoId)}&trackId=${rep.track_id}&repIndex=${rep.rep_index}`}
+                className="text-[10px] uppercase tracking-wide text-zinc-500 hover:text-bridge-gold"
+              >
+                Add to reel
+              </a>
+            )}
+          </div>
         </div>
       ))}
     </div>

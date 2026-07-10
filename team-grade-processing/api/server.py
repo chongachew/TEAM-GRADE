@@ -8,6 +8,7 @@ import os
 import secrets
 import sys
 import subprocess
+import tempfile
 from typing import Optional, Dict, Any
 from datetime import datetime
 
@@ -15,6 +16,7 @@ from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, HttpUrl
 from pathlib import Path
 
@@ -1000,6 +1002,34 @@ async def get_frame_boxes(video_id: str, frame_index: int) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve frame boxes: {str(e)}")
 
 
+def _find_rep_doc(
+    firestore_client: 'FirestoreClient',
+    safe_video_id: str,
+    rep_index: int,
+    lookup_track_id: Optional[int],
+):
+    """
+    Find a rep doc by rep_index + track_id (None for the single-athlete-mode
+    sentinel) - shared by the boundary-correction and clip-cut endpoints.
+
+    Returns:
+        The matching Firestore doc snapshot, or None if not found.
+    """
+    reps_ref = (
+        firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+        .document(safe_video_id)
+        .collection(settings.COLLECTION_REPS)
+    )
+    for doc in reps_ref.stream():
+        data = doc.to_dict()
+        if data.get("rep_index") != rep_index:
+            continue
+        if data.get("track_id") != lookup_track_id:
+            continue
+        return doc
+    return None
+
+
 def _recompute_rep_analysis(
     firestore_client: 'FirestoreClient',
     safe_video_id: str,
@@ -1107,26 +1137,13 @@ async def correct_rep_boundary(video_id: str, request: RepCorrectionRequest) -> 
         # analysis endpoints.
         lookup_track_id = request.track_id if request.track_id else None
 
-        reps_ref = (
-            firestore_client.db.collection(settings.COLLECTION_VIDEOS)
-            .document(safe_video_id)
-            .collection(settings.COLLECTION_REPS)
-        )
-        rep_doc_ref = None
-        for doc in reps_ref.stream():
-            data = doc.to_dict()
-            if data.get("rep_index") != request.rep_index:
-                continue
-            if data.get("track_id") != lookup_track_id:
-                continue
-            rep_doc_ref = doc.reference
-            break
-
-        if rep_doc_ref is None:
+        rep_doc = _find_rep_doc(firestore_client, safe_video_id, request.rep_index, lookup_track_id)
+        if rep_doc is None:
             raise HTTPException(
                 status_code=404,
                 detail=f"Rep {request.rep_index} (track_id={request.track_id}) not found",
             )
+        rep_doc_ref = rep_doc.reference
 
         try:
             analysis = _recompute_rep_analysis(
@@ -1177,6 +1194,112 @@ async def correct_rep_boundary(video_id: str, request: RepCorrectionRequest) -> 
             f"[FAIL] Rep boundary correction error for {safe_video_id}: {str(e)}", exc_info=True
         )
         raise HTTPException(status_code=500, detail=f"Failed to correct rep boundary: {str(e)}")
+
+
+@app.get("/api/reps/{video_id}/clip")
+async def get_rep_clip(video_id: str, track_id: int = Query(...), rep_index: int = Query(...)) -> FileResponse:
+    """
+    Cut and return a short clip of one rep's frame range, for the highlight-
+    tape creation flow (blueprint: "Highlight tape creation"). Cuts from the
+    already-downloaded local source file - nothing purges it yet, so no
+    re-fetch from the original source (YouTube/Vimeo/etc.) is needed for the
+    common case. If that local file is missing (e.g. manually cleaned up),
+    this returns 404 rather than attempting a same-source re-fetch - that
+    fallback is real future work, not needed while nothing purges files today.
+
+    Uses ffmpeg stream-copy (-c copy): fast, no re-encode, but the actual cut
+    point snaps to the nearest keyframe at/before the requested start - may
+    include a moment of footage before the play technically started, an
+    accepted tradeoff for a first version, not a bug to chase further here.
+
+    Raises:
+        HTTPException: 400 for an invalid video_id, 404 if the video/rep/
+            local source file doesn't exist, 500 if ffmpeg fails
+    """
+    try:
+        safe_video_id = settings.sanitize_id(video_id)
+    except (ValueError, ImportError) as e:
+        logger.warning(f"Invalid video_id format: {e}")
+        raise HTTPException(status_code=400, detail="Invalid video_id format")
+
+    logger.info(f"GET /api/reps/{safe_video_id}/clip - track_id={track_id}, rep_index={rep_index}")
+
+    if not firestore_client:
+        raise HTTPException(status_code=503, detail="Firestore client not available")
+
+    output_path: Optional[Path] = None
+    try:
+        video_data = firestore_client.get_video_status(safe_video_id)
+        if not video_data:
+            raise HTTPException(status_code=404, detail=f"Video {safe_video_id} not found")
+
+        # track_id=0 is the single-athlete-mode sentinel (no real track_id on
+        # the rep doc at all) - same idiom used by /api/analysis, /api/tracks,
+        # and PATCH /api/reps/{video_id}.
+        lookup_track_id = track_id if track_id else None
+        rep_doc = _find_rep_doc(firestore_client, safe_video_id, rep_index, lookup_track_id)
+        if rep_doc is None:
+            raise HTTPException(
+                status_code=404, detail=f"Rep {rep_index} (track_id={track_id}) not found"
+            )
+
+        rep_data = rep_doc.to_dict()
+        start_frame = rep_data.get("start_frame")
+        end_frame = rep_data.get("end_frame")
+        if start_frame is None or end_frame is None:
+            raise HTTPException(status_code=404, detail="Rep has no start_frame/end_frame recorded")
+
+        source_path = settings.get_video_path(safe_video_id)
+        if not source_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail="Source video is no longer available locally - can't cut a clip",
+            )
+
+        start_seconds = start_frame / settings.FRAME_EXTRACTION_FPS
+        duration_seconds = (end_frame - start_frame) / settings.FRAME_EXTRACTION_FPS
+
+        tmp_dir = Path(tempfile.gettempdir())
+        output_path = tmp_dir / f"{safe_video_id}_{track_id}_{rep_index}_{secrets.token_hex(4)}.mp4"
+
+        ffmpeg_cmd = [
+            "ffmpeg", "-y",
+            "-ss", str(start_seconds),
+            "-i", str(source_path),
+            "-t", str(duration_seconds),
+            "-c", "copy",
+            str(output_path),
+        ]
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, timeout=60)
+
+        if result.returncode != 0 or not output_path.exists():
+            logger.error(
+                f"[FAIL] ffmpeg clip cut failed for {safe_video_id} rep {rep_index}: "
+                f"{result.stderr.decode(errors='replace')}"
+            )
+            raise HTTPException(status_code=500, detail="Failed to cut clip")
+
+        logger.info(f"[OK] Cut clip for {safe_video_id} rep {rep_index} -> {output_path}")
+
+        return FileResponse(
+            str(output_path),
+            media_type="video/mp4",
+            background=BackgroundTask(lambda: output_path.unlink(missing_ok=True)),
+        )
+
+    except HTTPException:
+        if output_path is not None and output_path.exists():
+            output_path.unlink(missing_ok=True)
+        raise
+    except subprocess.TimeoutExpired:
+        if output_path is not None and output_path.exists():
+            output_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail="Clip cutting timed out")
+    except Exception as e:
+        if output_path is not None and output_path.exists():
+            output_path.unlink(missing_ok=True)
+        logger.error(f"[FAIL] Clip cut error for {safe_video_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to cut clip: {str(e)}")
 
 
 @app.get("/api/queue")

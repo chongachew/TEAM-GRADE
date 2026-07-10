@@ -154,6 +154,7 @@ export default function AnalysisPage() {
                 Plays
               </h2>
               <PlaysGrid
+                videoId={videoId}
                 reps={analysisQuery.data?.reps || []}
                 claimedTrackId={claimedTrackId}
                 onSeek={handleSeek}
