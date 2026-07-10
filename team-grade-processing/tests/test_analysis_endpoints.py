@@ -105,6 +105,34 @@ class TestAnalysisEndpoint:
 
     @pytest.mark.endpoints
     @pytest.mark.integration
+    def test_get_analysis_includes_rep_timing_and_single_athlete_sentinel(self, client, mock_video_document):
+        """Single-athlete-mode videos (no track_id anywhere, the default pipeline
+        path) get track_id=0 as a sentinel, and every rep is annotated with its
+        start/end/duration from the reps subcollection so the frontend can seek
+        the video player to it without a second request."""
+        with patch("api.server.firestore_client") as mock_fs:
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_subcollections(
+                mock_fs,
+                analysis_docs=[
+                    {"rep_index": 0, "traits": {}, "buckets": {}, "overall_grade": 82.0},
+                ],
+                reps_docs=[
+                    {"rep_index": 0, "start_frame": 30, "end_frame": 90, "duration_seconds": 4.0},
+                ],
+            )
+
+            response = client.get("/api/analysis/dQw4w9WgXcQ")
+
+            assert response.status_code == 200
+            rep = response.json()["reps"][0]
+            assert rep["track_id"] == 0
+            assert rep["start_frame"] == 30
+            assert rep["end_frame"] == 90
+            assert rep["duration_seconds"] == 4.0
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
     def test_get_analysis_invalid_video_id(self, client):
         response = client.get("/api/analysis/***")
 

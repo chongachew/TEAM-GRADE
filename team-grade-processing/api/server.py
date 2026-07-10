@@ -69,6 +69,7 @@ ensure_dependencies()
 from ingest.ingest_worker import IngestWorker
 from ingest.firestore_client import FirestoreClient, VideoStatus, IngestStage
 from ingest.youtube_metadata import YouTubeMetadataExtractor
+from ingest.utils.firestore_utils import COLLECTION_TRACKS, COLLECTION_TRACKS_META
 
 # Import centralized constants
 try:
@@ -124,6 +125,12 @@ if ui_path.exists():
     app.mount("/ui/static", StaticFiles(directory=str(ui_path)), name="static")
 else:
     logger.warning(f"UI directory not found at {ui_path}")
+
+# Serve source video files for playback. Starlette's StaticFiles (FileResponse
+# under the hood) already supports HTTP range requests on this fastapi version,
+# so the <video> element's scrubber/seek works with no extra range-handling code.
+settings.get_videos_dir()  # ensure the directory exists before mounting it
+app.mount("/media", StaticFiles(directory=str(settings.VIDEOS_DIR)), name="media")
 
 # Initialize ingestion components
 ingest_worker = None
@@ -744,21 +751,31 @@ async def get_analysis(
         )
         reps = [doc.to_dict() for doc in analysis_ref.stream()]
 
-        # Fallback join for analysis docs written before track_id was denormalized
-        # into them directly — look it up from the reps collection by rep_index.
-        missing = [r for r in reps if r.get("track_id") is None]
-        if missing:
-            reps_ref = (
-                firestore_client.db.collection(settings.COLLECTION_VIDEOS)
-                .document(safe_video_id)
-                .collection(settings.COLLECTION_REPS)
-            )
-            track_id_by_rep_index = {
-                d.to_dict().get("rep_index"): d.to_dict().get("track_id")
-                for d in reps_ref.stream()
-            }
-            for rep in missing:
-                rep["track_id"] = track_id_by_rep_index.get(rep.get("rep_index"))
+        # Single read of the reps subcollection covers two joins at once: the
+        # fallback for analysis docs written before track_id was denormalized
+        # into them directly, and the start_frame/end_frame/duration_seconds
+        # timing fields the frontend needs to seek the video player to a rep.
+        reps_ref = (
+            firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+            .document(safe_video_id)
+            .collection(settings.COLLECTION_REPS)
+        )
+        rep_docs_by_index = {
+            d.to_dict().get("rep_index"): d.to_dict() for d in reps_ref.stream()
+        }
+        for rep in reps:
+            rep_doc = rep_docs_by_index.get(rep.get("rep_index"), {})
+            if rep.get("track_id") is None:
+                rep["track_id"] = rep_doc.get("track_id")
+            # Single-athlete-mode videos (MULTI_PLAYER_TRACKING_ENABLED off, the
+            # default) have no real track_id at all - use 0 as a sentinel so
+            # every rep is concretely claimable without a schema change on the
+            # already-shipped film-stats route (trackId is a required int there).
+            if rep.get("track_id") is None:
+                rep["track_id"] = 0
+            rep["start_frame"] = rep_doc.get("start_frame")
+            rep["end_frame"] = rep_doc.get("end_frame")
+            rep["duration_seconds"] = rep_doc.get("duration_seconds")
 
         if track_id is not None:
             reps = [r for r in reps if r.get("track_id") == track_id]
@@ -774,6 +791,202 @@ async def get_analysis(
             status_code=500,
             detail=f"Failed to retrieve analysis: {str(e)}"
         )
+
+
+@app.get("/api/tracks/{video_id}")
+async def get_tracks(video_id: str) -> Dict[str, Any]:
+    """
+    Get the player library for a video: one entry per tracked player.
+
+    Multi-player-mode videos (MULTI_PLAYER_TRACKING_ENABLED) return one entry
+    per tracks_meta doc. Single-athlete-mode videos (the default) have no
+    tracks_meta subcollection at all - in that case, return a single synthetic
+    entry built from the root video doc's own jersey fields, with track_id=0
+    (the same sentinel /api/analysis uses), so the player library and claim
+    flow always have exactly one correct card instead of rendering empty.
+
+    Raises:
+        HTTPException: If the video itself doesn't exist
+    """
+    try:
+        safe_video_id = settings.sanitize_id(video_id)
+    except (ValueError, ImportError) as e:
+        logger.warning(f"Invalid video_id format: {e}")
+        raise HTTPException(status_code=400, detail="Invalid video_id format")
+
+    logger.info(f"GET /api/tracks/{safe_video_id}")
+
+    if not firestore_client:
+        raise HTTPException(status_code=503, detail="Firestore client not available")
+
+    try:
+        video_data = firestore_client.get_video_status(safe_video_id)
+        if not video_data:
+            logger.warning(f"Video not found: {safe_video_id}")
+            raise HTTPException(status_code=404, detail=f"Video {safe_video_id} not found")
+
+        tracks_meta_ref = (
+            firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+            .document(safe_video_id)
+            .collection(COLLECTION_TRACKS_META)
+        )
+        tracks = []
+        for doc in tracks_meta_ref.stream():
+            data = doc.to_dict()
+            tracks.append({
+                "track_id": int(doc.id),
+                "jersey_number": data.get("jersey_number"),
+                "jersey_confidence": data.get("jersey_confidence"),
+                "first_frame": data.get("first_frame"),
+                "last_frame": data.get("last_frame"),
+                "total_frames_tracked": data.get("total_frames_tracked"),
+                "status": data.get("status"),
+            })
+
+        if not tracks:
+            tracks.append({
+                "track_id": 0,
+                "jersey_number": video_data.get("jersey_number"),
+                "jersey_confidence": video_data.get("jersey_confidence"),
+                "first_frame": None,
+                "last_frame": None,
+                "total_frames_tracked": None,
+                "status": None,
+            })
+
+        logger.info(f"Retrieved {len(tracks)} track(s) for {safe_video_id}")
+        return {"tracks": tracks}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[FAIL] Tracks retrieval error for {safe_video_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve tracks: {str(e)}")
+
+
+@app.get("/api/tracks/{video_id}/thumbnail/{track_id}")
+async def get_track_thumbnail(video_id: str, track_id: int) -> FileResponse:
+    """
+    Serve one representative torso-crop image for a tracked player.
+
+    The crop is chosen server-side (largest crop_box area - the clearest/
+    closest available shot; torso crops don't carry their own confidence
+    score) and its file path is resolved from Firestore, never accepted
+    directly from the client - crop_path is stored relative to PROJECT_ROOT
+    with no path-traversal guarantee of its own.
+
+    Raises:
+        HTTPException: If the video or a thumbnail for that track doesn't exist
+    """
+    try:
+        safe_video_id = settings.sanitize_id(video_id)
+    except (ValueError, ImportError) as e:
+        logger.warning(f"Invalid video_id format: {e}")
+        raise HTTPException(status_code=400, detail="Invalid video_id format")
+
+    logger.info(f"GET /api/tracks/{safe_video_id}/thumbnail/{track_id}")
+
+    if not firestore_client:
+        raise HTTPException(status_code=503, detail="Firestore client not available")
+
+    try:
+        video_data = firestore_client.get_video_status(safe_video_id)
+        if not video_data:
+            logger.warning(f"Video not found: {safe_video_id}")
+            raise HTTPException(status_code=404, detail=f"Video {safe_video_id} not found")
+
+        torso_ref = (
+            firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+            .document(safe_video_id)
+            .collection(settings.COLLECTION_TORSO)
+        )
+        crops = [doc.to_dict() for doc in torso_ref.stream()]
+
+        if track_id:
+            crops = [c for c in crops if c.get("track_id") == track_id]
+        else:
+            # Sentinel track_id=0: single-athlete-mode crops carry no track_id field at all.
+            crops = [c for c in crops if c.get("track_id") is None]
+
+        if not crops:
+            raise HTTPException(
+                status_code=404, detail=f"No thumbnail available for track {track_id}"
+            )
+
+        def crop_area(crop: Dict[str, Any]) -> float:
+            box = crop.get("crop_box")
+            if not box or len(box) != 4:
+                return 0
+            x_min, y_min, x_max, y_max = box
+            return max(0, x_max - x_min) * max(0, y_max - y_min)
+
+        best = max(crops, key=crop_area)
+        crop_path = (settings.PROJECT_ROOT / best["crop_path"]).resolve()
+        project_root = settings.PROJECT_ROOT.resolve()
+
+        # Defense in depth: confirm the resolved path is actually inside
+        # PROJECT_ROOT before serving it, even though crop_path always
+        # originates server-side from our own pipeline's writes.
+        if project_root not in crop_path.parents or not crop_path.exists():
+            raise HTTPException(status_code=404, detail="Thumbnail file not found")
+
+        return FileResponse(str(crop_path), media_type="image/jpeg")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"[FAIL] Thumbnail retrieval error for {safe_video_id}/{track_id}: {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve thumbnail: {str(e)}")
+
+
+@app.get("/api/tracks/{video_id}/frame/{frame_index}")
+async def get_frame_boxes(video_id: str, frame_index: int) -> Dict[str, Any]:
+    """
+    Get per-track bounding boxes for one exact frame - feeds the live box
+    overlay during video playback, one small request per displayed frame
+    rather than pulling the whole tracks subcollection up front.
+
+    Raises:
+        HTTPException: If the video itself doesn't exist
+    """
+    try:
+        safe_video_id = settings.sanitize_id(video_id)
+    except (ValueError, ImportError) as e:
+        logger.warning(f"Invalid video_id format: {e}")
+        raise HTTPException(status_code=400, detail="Invalid video_id format")
+
+    if not firestore_client:
+        raise HTTPException(status_code=503, detail="Firestore client not available")
+
+    try:
+        video_data = firestore_client.get_video_status(safe_video_id)
+        if not video_data:
+            raise HTTPException(status_code=404, detail=f"Video {safe_video_id} not found")
+
+        tracks_ref = (
+            firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+            .document(safe_video_id)
+            .collection(COLLECTION_TRACKS)
+            .where("frame_index", "==", frame_index)
+        )
+        boxes = [
+            {"track_id": d.to_dict().get("track_id"), "bbox": d.to_dict().get("bbox")}
+            for d in tracks_ref.stream()
+        ]
+
+        return {"frame_index": frame_index, "boxes": boxes}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"[FAIL] Frame boxes retrieval error for {safe_video_id}/{frame_index}: {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve frame boxes: {str(e)}")
 
 
 @app.get("/api/queue")
