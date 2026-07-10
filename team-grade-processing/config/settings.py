@@ -43,6 +43,7 @@ PIPELINE_VERSION = "2.0"
 PIPELINE_STAGES = [
     "metadata",
     "download",
+    "whistle_detection",
     "frame_extraction",
     "motion_compensation",
     "detection",
@@ -213,6 +214,57 @@ SAM2_CHECKPOINT_PATH = os.getenv(
 SAM2_CONFIG_FILE = os.getenv("SAM2_CONFIG_FILE", "configs/sam2.1/sam2.1_hiera_t.yaml")
 
 # ============================================================================
+# WHISTLE DETECTION SETTINGS
+# ============================================================================
+# Ported from a standalone preprocessor/ PR that was never wired into the real
+# pipeline; ported as-is into processing/audio_analyzer.py. Tuned per academic
+# research: "Automated Referee Whistle Sound Detection for Extraction of
+# Highlights from Sports Video".
+
+# Master switch for the whistle_detection stage. When false (default), download
+# enqueues straight to "frame_extraction" and the pipeline behaves exactly as
+# it did before this addition.
+WHISTLE_DETECTION_ENABLED = os.getenv("WHISTLE_DETECTION_ENABLED", "false").lower() in ["true", "1", "yes"]
+
+AUDIO_SAMPLE_RATE = 22050       # Hz - balance between speed and accuracy
+AUDIO_CHUNK_DURATION = 30       # seconds - process in chunks for memory efficiency
+AUDIO_HOP_LENGTH = 512          # samples - frame stride (~23 ms at 22050 Hz)
+AUDIO_N_FFT = 2048              # samples - FFT window for frequency resolution
+
+# Bandpass filter (academic research: whistle sits in 2-4 kHz)
+WHISTLE_BANDPASS_LOW = 2000     # Hz - lower edge of whistle band
+WHISTLE_BANDPASS_HIGH = 4000    # Hz - upper edge of whistle band
+WHISTLE_BANDPASS_ORDER = 5      # FIR/IIR filter order
+
+# Short-Time Energy (STE) thresholding
+WHISTLE_ENERGY_PERCENTILE = 75  # Upper-quartile threshold (academic finding)
+WHISTLE_ENERGY_FLOOR = 1e-6     # Absolute floor - avoids false positives on silence
+
+# Spectral centroid target range for a referee whistle
+WHISTLE_SPECTRAL_BAND = (2500, 3500)  # Hz - centroid range for a standard whistle
+
+# Duration constraints
+WHISTLE_MIN_DURATION = 0.05     # 50 ms minimum (academic finding)
+WHISTLE_MAX_DURATION = 2.0      # 2 s maximum (outlier rejection)
+
+# Librosa onset detection
+ONSET_THRESHOLD = 0.1           # Peak threshold for librosa.onset.onset_detect
+ONSET_DISTANCE = max(1, int(0.3 * AUDIO_SAMPLE_RATE / AUDIO_HOP_LENGTH))
+# Minimum 0.3 s between onset peaks (in frames) - a referee cannot physically
+# blow two distinct whistles within 300 ms.
+
+# Post-processing
+EVENT_MERGE_GAP = 0.1           # Merge events closer than 100 ms
+CONFIDENCE_THRESHOLD = 0.5      # Minimum confidence to include in output
+
+# Confidence fusion weights inside audio_analyzer (onset + STE + spectral)
+AUDIO_FUSION_WEIGHTS = {
+    "onset": 0.40,
+    "ste": 0.35,
+    "spectral": 0.25,
+}
+
+# ============================================================================
 # REP EXTRACTION SETTINGS
 # ============================================================================
 
@@ -347,6 +399,7 @@ ERROR_CODES = {
     "TRACKING_FAILED": "Player tracking failed",
     "DETECTIONS_NOT_FOUND": "No detections found for video",
     "TRACKS_NOT_FOUND": "No tracks found for video",
+    "WHISTLE_DETECTION_FAILED": "Audio whistle detection failed",
     
     # Firestore errors
     "FIRESTORE_ERROR": "Firestore operation failed",

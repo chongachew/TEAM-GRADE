@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Stage name constants
 STAGE_NAME = "download"
-STAGE_NEXT = "frame_extraction"
+STAGE_NEXT = "whistle_detection" if getattr(settings, "WHISTLE_DETECTION_ENABLED", False) else "frame_extraction"
 
 
 def run_download_stage(

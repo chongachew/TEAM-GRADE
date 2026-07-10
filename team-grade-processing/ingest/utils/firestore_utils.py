@@ -22,6 +22,7 @@ COLLECTION_CAMERA_MOTION = "camera_motion"
 COLLECTION_DETECTIONS = "detections"
 COLLECTION_TRACKS = "tracks"
 COLLECTION_TRACKS_META = "tracks_meta"
+COLLECTION_WHISTLE_EVENTS = "whistle_events"
 
 
 def get_utc_timestamp() -> str:
@@ -389,6 +390,65 @@ def write_camera_motion_batch(
         return 0
     except Exception as e:
         logger.error(f"[FS] Failed to write camera_motion batch: {e}")
+        return 0
+
+
+def write_whistle_events_batch(
+    firestore_client,
+    video_id: str,
+    events: List[Dict[str, Any]],
+    batch_size: int = 100
+) -> int:
+    """Write detected whistle events to Firestore in batches.
+
+    Args:
+        firestore_client: Firestore client instance
+        video_id: YouTube video ID (will be sanitized)
+        events: List of dicts with keys: timestamp, confidence, onset_strength,
+                spectral_centroid, duration, type (see processing.audio_analyzer)
+        batch_size: Batch size (capped at 500)
+
+    Returns:
+        Number of documents written
+
+    Raises:
+        ValueError: If video_id is invalid
+    """
+    try:
+        safe_id = settings.sanitize_id(video_id)
+        safe_batch_size = max(1, min(batch_size, 500))
+
+        db = firestore_client.db
+        written = 0
+
+        for i in range(0, len(events), safe_batch_size):
+            batch = db.batch()
+            batch_docs = events[i : i + safe_batch_size]
+
+            for idx, doc in enumerate(batch_docs):
+                if 'timestamp' not in doc:
+                    raise ValueError(f"Whistle event doc missing 'timestamp': {doc}")
+
+                doc_id = f"{i + idx:06d}"
+                doc_ref = (
+                    db.collection(COLLECTION_VIDEOS)
+                    .document(safe_id)
+                    .collection(COLLECTION_WHISTLE_EVENTS)
+                    .document(doc_id)
+                )
+                batch.set(doc_ref, doc)
+
+            batch.commit()
+            written += len(batch_docs)
+
+        logger.info(f"[FS] Wrote {written} whistle_events documents for {safe_id}")
+        return written
+
+    except ValueError as e:
+        logger.error(f"[FS] Invalid input: {e}")
+        return 0
+    except Exception as e:
+        logger.error(f"[FS] Failed to write whistle_events batch: {e}")
         return 0
 
 

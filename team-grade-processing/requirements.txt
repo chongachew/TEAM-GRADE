@@ -28,3 +28,8 @@ torchvision>=0.20.0
 rfdetr>=1.0.0
 sam2>=1.1.0
 supervision>=0.24.0
+
+# --- Whistle detection (ported from a standalone preprocessor/ PR that was
+# never wired into the real pipeline; now the whistle_detection stage) ---
+librosa>=0.10.0
+scipy>=1.11.0
