@@ -581,18 +581,24 @@ async def get_status(video_id: str) -> StatusResponse:
 
 
 @app.get("/api/analysis/{video_id}")
-async def get_analysis(video_id: str) -> Dict[str, Any]:
+async def get_analysis(
+    video_id: str, track_id: Optional[int] = Query(None)
+) -> Dict[str, Any]:
     """
-    Get analysis results for a video.
-    
+    Get per-rep analysis results for a video.
+
     Args:
         video_id: YouTube video ID (will be validated)
-        
+        track_id: optional filter to scope the returned reps to one tracked player
+
     Returns:
-        Analysis results dict with per_rep and summary data
-        
+        {"reps": [{"rep_index", "track_id", "traits", "buckets", "overall_grade"}, ...]}
+        Empty "reps" list (not a 404) if the video exists but analysis hasn't been
+        written yet — callers need to be able to tell "not found" apart from
+        "not ready yet".
+
     Raises:
-        HTTPException: If video or analysis not found
+        HTTPException: If the video itself doesn't exist
     """
     # Validate and sanitize video_id
     try:
@@ -604,39 +610,56 @@ async def get_analysis(video_id: str) -> Dict[str, Any]:
             status_code=400,
             detail="Invalid video_id format"
         )
-    
+
     logger.info(f"GET /api/analysis/{safe_video_id}")
-    
+
     if not firestore_client:
         raise HTTPException(
             status_code=503,
             detail="Firestore client not available"
         )
-    
+
     try:
-        # Query Firestore for video with analysis
         video_data = firestore_client.get_video_status(safe_video_id)
-        
+
         if not video_data:
             logger.warning(f"Video not found: {safe_video_id}")
             raise HTTPException(
                 status_code=404,
                 detail=f"Video {safe_video_id} not found"
             )
-        
-        # Check if analysis exists
-        analysis = video_data.get("analysis")
-        
-        if not analysis:
-            logger.warning(f"Analysis not found for: {safe_video_id}")
-            raise HTTPException(
-                status_code=404,
-                detail=f"Analysis results not available for {safe_video_id} (pipeline may still be processing)"
+
+        # Active biomechanics stage (biomechanics_stage_vectorized.py) writes each
+        # rep's analysis to this subcollection, not a top-level "analysis" field.
+        analysis_ref = (
+            firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+            .document(safe_video_id)
+            .collection(settings.COLLECTION_ANALYSIS)
+        )
+        reps = [doc.to_dict() for doc in analysis_ref.stream()]
+
+        # Fallback join for analysis docs written before track_id was denormalized
+        # into them directly — look it up from the reps collection by rep_index.
+        missing = [r for r in reps if r.get("track_id") is None]
+        if missing:
+            reps_ref = (
+                firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+                .document(safe_video_id)
+                .collection(settings.COLLECTION_REPS)
             )
-        
-        logger.info(f"Retrieved analysis for {safe_video_id}")
-        return analysis
-    
+            track_id_by_rep_index = {
+                d.to_dict().get("rep_index"): d.to_dict().get("track_id")
+                for d in reps_ref.stream()
+            }
+            for rep in missing:
+                rep["track_id"] = track_id_by_rep_index.get(rep.get("rep_index"))
+
+        if track_id is not None:
+            reps = [r for r in reps if r.get("track_id") == track_id]
+
+        logger.info(f"Retrieved {len(reps)} rep analysis record(s) for {safe_video_id}")
+        return {"reps": reps}
+
     except HTTPException:
         raise
     except Exception as e:

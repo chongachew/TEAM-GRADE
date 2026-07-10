@@ -258,6 +258,7 @@ def run_biomechanics_stage(
 
             reps_features = []
             rep_indices = []
+            rep_track_ids = []
 
             for rep_doc in reps_docs:
                 rep_data = rep_doc.to_dict()
@@ -265,6 +266,7 @@ def run_biomechanics_stage(
                 rep_indices.append(rep_index)
 
                 track_id = rep_data.get("track_id")
+                rep_track_ids.append(track_id)
                 start_frame = rep_data.get("start_frame", 0)
                 end_frame = rep_data.get("end_frame", 0)
 
@@ -349,6 +351,7 @@ def run_biomechanics_stage(
             for i, rep_index in enumerate(rep_indices):
                 rep_analysis = {
                     "rep_index": rep_index,
+                    "track_id": rep_track_ids[i],
                     "traits": {
                         trait_names[j]: float(trait_scores[i, j])
                         for j in range(len(trait_names))

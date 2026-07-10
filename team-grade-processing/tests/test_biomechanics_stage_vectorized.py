@@ -8,9 +8,15 @@ implementation (identical input would have produced different output on
 every call, and different inputs would have been indistinguishable).
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 
-from ingest.stages.biomechanics_stage_vectorized import _extract_pose_features
+from config import settings
+from ingest.stages.biomechanics_stage_vectorized import (
+    _extract_pose_features,
+    run_biomechanics_stage,
+)
 
 
 def _make_frame(hip_x: float, ankle_x: float) -> dict:
@@ -89,3 +95,65 @@ def test_all_feature_values_are_numeric_in_0_100_range(high_motion_frames):
 def test_single_frame_does_not_crash():
     features = _extract_pose_features([_make_frame(0.3, 0.3)])
     assert features["linear_speed"] == 0.0
+
+
+class FakeDoc:
+    def __init__(self, data):
+        self._data = data
+
+    def to_dict(self):
+        return self._data
+
+
+def _make_pose_collection_mock(pose_docs):
+    """where()/order_by() return self so the real chained-call pattern
+    (.where(...).where(...).order_by(...).stream()) works without needing to
+    replicate per-track filtering in the mock itself."""
+    m = MagicMock()
+    m.where.return_value = m
+    m.order_by.return_value = m
+    m.stream.return_value = pose_docs
+    return m
+
+
+def test_writes_track_id_into_each_analysis_record():
+    """Regression guard for the track_id-denormalization fix: GET
+    /api/analysis/{video_id} reads from this stage's output subcollection and
+    needs track_id on every doc to answer "give me this track's stats"."""
+    rep_docs = [
+        FakeDoc({"rep_index": 0, "track_id": 5, "start_frame": 0, "end_frame": 9}),
+        FakeDoc({"rep_index": 1, "track_id": 9, "start_frame": 0, "end_frame": 9}),
+    ]
+    pose_docs = [
+        FakeDoc({"frame_index": i, "landmarks": _make_frame(0.3 + i * 0.03, 0.3 + i * 0.05)})
+        for i in range(10)
+    ]
+
+    def collection_side_effect(name):
+        if name == settings.COLLECTION_REPS:
+            reps_mock = MagicMock()
+            reps_mock.stream.return_value = rep_docs
+            return reps_mock
+        if name == settings.COLLECTION_POSE:
+            return _make_pose_collection_mock(pose_docs)
+        return MagicMock()
+
+    doc_mock = MagicMock()
+    doc_mock.collection.side_effect = collection_side_effect
+
+    mock_firestore = MagicMock()
+    mock_firestore.db.collection.return_value.document.return_value = doc_mock
+    mock_batch = MagicMock()
+    mock_firestore.db.batch.return_value = mock_batch
+
+    mock_queue = MagicMock()
+    mock_queue.enqueue_video.return_value = True
+
+    success, error = run_biomechanics_stage(mock_firestore, "dQw4w9WgXcQ", mock_queue)
+
+    assert success is True, error
+    written = [call.args[1] for call in mock_batch.set.call_args_list]
+    assert len(written) == 2
+    written_by_rep_index = {rep["rep_index"]: rep for rep in written}
+    assert written_by_rep_index[0]["track_id"] == 5
+    assert written_by_rep_index[1]["track_id"] == 9
