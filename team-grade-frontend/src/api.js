@@ -1,4 +1,4 @@
-const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:8000";
+export const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:8000";
 
 async function handleResponse(res) {
   const data = await res.json().catch(() => ({}));
@@ -30,4 +30,22 @@ export async function getStatus(videoId) {
 export async function getAnalysis(videoId) {
   const res = await fetch(`${API_BASE}/api/analysis/${videoId}`);
   return handleResponse(res);
+}
+
+export async function getTracks(videoId) {
+  const res = await fetch(`${API_BASE}/api/tracks/${videoId}`);
+  return handleResponse(res);
+}
+
+export async function getFrameBoxes(videoId, frameIndex) {
+  const res = await fetch(`${API_BASE}/api/tracks/${videoId}/frame/${frameIndex}`);
+  return handleResponse(res);
+}
+
+export function thumbnailUrl(videoId, trackId) {
+  return `${API_BASE}/api/tracks/${videoId}/thumbnail/${trackId}`;
+}
+
+export function videoUrl(videoId) {
+  return `${API_BASE}/media/${videoId}.mp4`;
 }
