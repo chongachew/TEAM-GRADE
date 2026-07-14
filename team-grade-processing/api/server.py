@@ -718,10 +718,20 @@ async def get_analysis(
         track_id: optional filter to scope the returned reps to one tracked player
 
     Returns:
-        {"reps": [{"rep_index", "track_id", "traits", "buckets", "overall_grade"}, ...]}
+        {"reps": [{"rep_index", "track_id", "traits", "buckets", "overall_grade"}, ...],
+         "provisional": bool}
         Empty "reps" list (not a 404) if the video exists but analysis hasn't been
         written yet — callers need to be able to tell "not found" apart from
         "not ready yet".
+
+        provisional=true means the final rep_extraction+biomechanics pass
+        hasn't run yet, but some pose data already exists - "reps" is a
+        preview computed fresh from whatever's been captured so far, using
+        the identical segmentation+scoring logic the final pass uses. It may
+        still shift, merge, or split as more of the video finishes
+        processing. The instant the real final pass writes its results, this
+        endpoint returns those instead and provisional flips to false,
+        permanently, for that video.
 
     Raises:
         HTTPException: If the video itself doesn't exist
@@ -790,6 +800,56 @@ async def get_analysis(
             rep["end_frame"] = rep_doc.get("end_frame")
             rep["duration_seconds"] = rep_doc.get("duration_seconds")
 
+        # Preview plays while the final pass hasn't run yet: if there's no
+        # final analysis but some pose data already exists (pose_stage_lite
+        # now writes incrementally - see its streaming_batch_size flush),
+        # run the exact same segmentation + scoring logic the final pass
+        # uses, just on however much pose data currently exists. Computed
+        # fresh on every call, never cached or persisted - the next poll
+        # naturally reflects whatever's been captured since. The moment the
+        # real rep_extraction+biomechanics pass writes to `analysis`, this
+        # branch stops being reached at all; the final answer always wins.
+        provisional = False
+        if not reps and video_data.get("status") != "completed":
+            try:
+                pose_ref = (
+                    firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+                    .document(safe_video_id)
+                    .collection(settings.COLLECTION_POSE)
+                )
+                poses_docs = list(pose_ref.stream())
+                if poses_docs:
+                    from processing.rep_extraction import segment_reps_from_pose_docs
+
+                    multi_player = getattr(settings, "MULTI_PLAYER_TRACKING_ENABLED", False)
+                    provisional_reps_meta, _ = segment_reps_from_pose_docs(
+                        firestore_client, safe_video_id, poses_docs, multi_player,
+                        settings.FRAME_EXTRACTION_FPS, settings.DEFAULT_PLAYER_POSITION,
+                    )
+                    for rep_meta in provisional_reps_meta:
+                        try:
+                            analysis = _recompute_rep_analysis(
+                                firestore_client, safe_video_id, rep_meta["rep_index"],
+                                rep_meta.get("track_id"), rep_meta["start_frame"], rep_meta["end_frame"],
+                            )
+                        except ValueError:
+                            # Shouldn't normally happen (the range was just
+                            # derived from this same pose data) - skip rather
+                            # than fail the whole preview over one rep.
+                            continue
+                        # Same 0-sentinel convention as the final-answer path below.
+                        if analysis.get("track_id") is None:
+                            analysis["track_id"] = 0
+                        analysis["start_frame"] = rep_meta["start_frame"]
+                        analysis["end_frame"] = rep_meta["end_frame"]
+                        analysis["duration_seconds"] = rep_meta["duration_seconds"]
+                        reps.append(analysis)
+                    provisional = len(reps) > 0
+            except Exception as e:
+                # Soft-flag: a broken preview must never break the endpoint -
+                # worst case it falls back to today's "no plays yet".
+                logger.warning(f"[get_analysis] Provisional analysis failed for {safe_video_id} (non-fatal): {e}")
+
         if track_id is not None:
             reps = [r for r in reps if r.get("track_id") == track_id]
 
@@ -802,8 +862,13 @@ async def get_analysis(
         authenticity_signals = video_data.get("authenticity_signals", {})
         authenticity_flagged = any(sig.get("flagged") for sig in authenticity_signals.values())
 
-        logger.info(f"Retrieved {len(reps)} rep analysis record(s) for {safe_video_id}")
-        return {"reps": reps, "authenticity_flagged": authenticity_flagged, "authenticity_signals": authenticity_signals}
+        logger.info(f"Retrieved {len(reps)} rep analysis record(s) for {safe_video_id} (provisional={provisional})")
+        return {
+            "reps": reps,
+            "provisional": provisional,
+            "authenticity_flagged": authenticity_flagged,
+            "authenticity_signals": authenticity_signals,
+        }
 
     except HTTPException:
         raise

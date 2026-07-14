@@ -19,7 +19,7 @@ function bucketClasses(bucket) {
   }
 }
 
-export default function PlaysGrid({ videoId, reps, claimedTrackId, onSeek, onEditBoundary }) {
+export default function PlaysGrid({ videoId, reps, claimedTrackId, onSeek, onEditBoundary, provisional }) {
   if (!reps.length) {
     return <p className="text-sm text-zinc-500">No plays detected yet.</p>;
   }
@@ -69,7 +69,12 @@ export default function PlaysGrid({ videoId, reps, claimedTrackId, onSeek, onEdi
                 Edit boundary
               </button>
             )}
-            {videoId && rep.start_frame != null && (
+            {/* Provisional plays aren't written to Firestore's `reps`
+                collection yet (that only happens on the real, final
+                rep_extraction pass) - TEAM-GRADE's clip-cut endpoint would
+                404 looking one up, so this stays hidden until the play is
+                no longer just a preview. */}
+            {!provisional && videoId && rep.start_frame != null && (
               <a
                 href={`${BRIDGE_APP_URL}/add-to-reel?videoId=${encodeURIComponent(videoId)}&trackId=${rep.track_id}&repIndex=${rep.rep_index}`}
                 className="text-[10px] uppercase tracking-wide text-zinc-500 hover:text-bridge-gold"

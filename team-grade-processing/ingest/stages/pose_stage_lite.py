@@ -228,12 +228,20 @@ def run_pose_stage_lite(
         # -------- Process frames --------
 
         poses = []
+        poses_written_total = 0
         high_confidence_count = 0
         confidence_threshold = getattr(
             settings,
             'POSE_CONFIDENCE_THRESHOLD',
             0.7
         )
+        # Flushed periodically during the frame loop below (not just once at
+        # the end) so pose data becomes queryable while this stage is still
+        # running - powers the analysis API's provisional-plays preview
+        # (get_analysis in api/server.py). Reuses POSE_BATCH_FRAME_COUNT,
+        # an existing settings constant that was never actually wired up
+        # anywhere before this.
+        streaming_batch_size = getattr(settings, 'POSE_BATCH_FRAME_COUNT', 10)
 
         try:
             import cv2
@@ -302,6 +310,25 @@ def run_pose_stage_lite(
                             "poses_found": high_confidence_count,
                         })
 
+                    # Flush this batch so it's queryable immediately, rather
+                    # than holding everything in memory until the whole video
+                    # is done. Non-fatal if it fails - logged and skipped,
+                    # matching the rest of this stage's per-frame error
+                    # handling; the final flush below still catches anything
+                    # this batch missed.
+                    if len(poses) >= streaming_batch_size:
+                        try:
+                            written = write_pose_batch(
+                                firestore_client, video_id_safe, poses, batch_size=streaming_batch_size
+                            )
+                            poses_written_total += written
+                            poses = []
+                        except Exception as flush_error:
+                            logger.warning(f"[{STAGE_NAME}] Streaming pose flush failed (non-fatal): {flush_error}", extra={
+                                "video_id": video_id_safe,
+                                "frame_index": idx,
+                            })
+
                 except Exception as frame_error:
                     logger.warning(f"[{STAGE_NAME}] Error processing frame {idx}: {frame_error}", extra={
                         "video_id": video_id_safe,
@@ -312,7 +339,7 @@ def run_pose_stage_lite(
             logger.info(f"[{STAGE_NAME}] Pose estimation complete", extra={
                 "video_id": video_id_safe,
                 "total_frames": len(frame_paths),
-                "high_confidence": len(poses),
+                "high_confidence": poses_written_total + len(poses),
                 "confidence_threshold": confidence_threshold,
             })
         
@@ -335,29 +362,32 @@ def run_pose_stage_lite(
         
         try:
             db = firestore_client.db
-            
+
+            # Final flush - whatever's left over from the last partial batch
+            # (streaming_batch_size may not divide the frame count evenly).
             if poses:
                 written = write_pose_batch(firestore_client, video_id_safe, poses)
-                logger.info(f"[{STAGE_NAME}] Wrote poses to Firestore", extra={
+                poses_written_total += written
+                logger.info(f"[{STAGE_NAME}] Wrote final pose batch to Firestore", extra={
                     "video_id": video_id_safe,
                     "poses_written": written,
                 })
-            
+
             # Update stage status with model info
             model_info = pose_estimator.get_model_info() if pose_estimator else {}
-            
+
             db.collection(settings.COLLECTION_VIDEOS).document(video_id_safe).update({
                 "stages.pose.status": "completed",
-                "stages.pose.total_poses": len(poses),
+                "stages.pose.total_poses": poses_written_total,
                 "stages.pose.model_type": model_info.get("model_type", "lite"),
                 "stages.pose.model_size_mb": model_info.get("model_size_mb"),
                 "stages.pose.confidence_threshold": confidence_threshold,
                 "stages.pose.completed_at": get_utc_timestamp(),
             })
-            
+
             logger.info(f"[{STAGE_NAME}] Updated stage status", extra={
                 "video_id": video_id_safe,
-                "poses": len(poses),
+                "poses": poses_written_total,
                 "model": model_info.get("model_type", "lite"),
             })
         
@@ -379,7 +409,7 @@ def run_pose_stage_lite(
                 priority=priority,
                 metadata={
                     "previous_stage": STAGE_NAME,
-                    "pose_count": len(poses),
+                    "pose_count": poses_written_total,
                     "model_type": model_info.get("model_type", "lite"),
                 }
             )
@@ -414,7 +444,7 @@ def run_pose_stage_lite(
             "video_id": video_id_safe,
             "stage": STAGE_NAME,
             "next_stage": STAGE_NEXT,
-            "poses_extracted": len(poses),
+            "poses_extracted": poses_written_total,
             "model": model_info.get("model_type", "lite"),
         })
         

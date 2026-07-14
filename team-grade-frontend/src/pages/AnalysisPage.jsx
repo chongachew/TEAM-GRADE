@@ -68,10 +68,16 @@ export default function AnalysisPage() {
 
   const isComplete = statusQuery.data?.status === "completed";
 
+  // Not gated on isComplete: while the video's still processing, this may
+  // return a "provisional" preview (pose_stage_lite now streams pose data
+  // incrementally, so GET /api/analysis can run the same play-detection
+  // logic on whatever's been captured so far - see get_analysis in
+  // api/server.py). Keeps polling until the final answer lands, same
+  // cadence as statusQuery.
   const analysisQuery = useQuery({
     queryKey: ["analysis", videoId],
     queryFn: () => getAnalysis(videoId),
-    enabled: isComplete,
+    refetchInterval: isComplete ? false : 3000,
   });
 
   const tracksQuery = useQuery({
@@ -143,35 +149,52 @@ export default function AnalysisPage() {
         )}
 
         {isComplete && (
-          <div className="flex flex-col gap-8">
-            <div className="relative">
-              <VideoPlayer ref={videoRef} videoId={videoId} onTimeUpdate={setCurrentTime} />
-              <BoxOverlay videoId={videoId} currentTime={currentTime} videoEl={videoRef.current} />
-            </div>
+          <div className="relative">
+            <VideoPlayer ref={videoRef} videoId={videoId} onTimeUpdate={setCurrentTime} />
+            <BoxOverlay videoId={videoId} currentTime={currentTime} videoEl={videoRef.current} />
+          </div>
+        )}
 
-            <section>
-              <h2 className="mb-3 font-condensed text-lg font-bold uppercase tracking-wide text-zinc-400">
+        {/* Plays list is intentionally NOT gated on isComplete - it shows a
+            provisional preview as soon as some pose data exists (see the
+            analysisQuery comment above), then the real final answer once
+            the pipeline actually finishes. Seeking/boundary-editing still
+            need the video player above, which stays completion-gated. */}
+        {statusQuery.data && statusQuery.data.status !== "failed" && (
+          <section className="mt-8">
+            <div className="mb-3 flex items-center gap-3">
+              <h2 className="font-condensed text-lg font-bold uppercase tracking-wide text-zinc-400">
                 Plays
               </h2>
-              <PlaysGrid
-                videoId={videoId}
-                reps={analysisQuery.data?.reps || []}
-                claimedTrackId={claimedTrackId}
-                onSeek={handleSeek}
-                onEditBoundary={setEditingRep}
-              />
-            </section>
+              {analysisQuery.data?.provisional && (
+                <span className="rounded-full bg-bridge-gold/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-bridge-gold">
+                  Preview — may still change
+                </span>
+              )}
+            </div>
+            <PlaysGrid
+              videoId={videoId}
+              reps={analysisQuery.data?.reps || []}
+              claimedTrackId={claimedTrackId}
+              onSeek={handleSeek}
+              onEditBoundary={isComplete ? setEditingRep : undefined}
+              provisional={Boolean(analysisQuery.data?.provisional)}
+            />
+          </section>
+        )}
 
-            {editingRep && (
-              <BoundaryEditor
-                videoId={videoId}
-                videoRef={videoRef}
-                rep={editingRep}
-                onSaved={handleBoundarySaved}
-                onCancel={() => setEditingRep(null)}
-              />
-            )}
+        {editingRep && (
+          <BoundaryEditor
+            videoId={videoId}
+            videoRef={videoRef}
+            rep={editingRep}
+            onSaved={handleBoundarySaved}
+            onCancel={() => setEditingRep(null)}
+          />
+        )}
 
+        {isComplete && (
+          <div className="mt-8 flex flex-col gap-8">
             <section>
               <h2 className="mb-3 font-condensed text-lg font-bold uppercase tracking-wide text-zinc-400">
                 Players

@@ -373,4 +373,139 @@ def smooth_trajectory(
 
         smoothed.append(smoothed_kp)
 
+
+def segment_reps_from_pose_docs(
+    firestore_client: Any,
+    video_id_safe: str,
+    poses_docs: List[Any],
+    multi_player: bool,
+    fps: float,
+    default_position: str,
+) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Turn a video's pose documents into rep (play) segments: the fast
+    trajectory analyzer first, falling back to RepExtractor's causal
+    motion-based segmentation if the fast analyzer errors or finds nothing -
+    the exact same logic ingest/stages/rep_extraction_stage.py has always
+    run for the final pass.
+
+    Shared by rep_extraction_stage.py (the real, final pass over the whole
+    video's pose data - result gets written to Firestore) and
+    api/server.py's get_analysis (an on-demand "preview" pass over whatever
+    partial pose data exists while a video is still processing - result is
+    only ever returned, never written). Using the identical function for
+    both means a preview never runs different logic than the final answer,
+    it's only ever working from less data.
+
+    Args:
+        firestore_client: Firestore client (used for the per-track jersey
+            number lookup in multi-player mode)
+        video_id_safe: already-sanitized video ID
+        poses_docs: Firestore doc snapshots from the video's `pose`
+            subcollection (caller fetches these - full set for a final pass,
+            whatever currently exists for a preview pass)
+        multi_player: settings.MULTI_PLAYER_TRACKING_ENABLED
+        fps: settings.FRAME_EXTRACTION_FPS
+        default_position: settings.DEFAULT_PLAYER_POSITION
+
+    Returns:
+        (reps_data, tracks_processed) - reps_data has the exact shape
+        already written to the `reps` Firestore subcollection:
+        {rep_index, start_frame, end_frame, duration_frames, duration_seconds,
+         track_id?, jersey_number?}
+    """
+    from processing.fast_trajectory import FastTrajectoryAnalyzer
+    from config import settings
+
+    frames_by_track: Dict[Optional[int], List[Frame]] = defaultdict(list)
+    for idx, pose_doc in enumerate(poses_docs):
+        pose_data = pose_doc.to_dict()
+        keypoints_dict = {k: v for k, v in pose_data.get("landmarks", {}).items()}
+        track_id = pose_data.get("track_id") if multi_player else None
+        frame = Frame(
+            frame_id=pose_data.get("frame_index", idx),
+            timestamp=pose_data.get("frame_index", idx) / fps,
+            track_id=track_id, jersey_number=None, jersey_confidence=0.0,
+            position=default_position, keypoints=keypoints_dict
+        )
+        frames_by_track[track_id].append(frame)
+    # Each track's frames are only the frames that track was actually
+    # detected in (temporally sparse relative to the whole video) - sort by
+    # frame_id since Firestore stream() order isn't guaranteed.
+    for track_id in frames_by_track:
+        frames_by_track[track_id].sort(key=lambda f: f.frame_id)
+
+    # Pull each track's jersey number once (not per rep) for convenience.
+    jersey_by_track: Dict[Optional[int], Optional[str]] = {}
+    if multi_player:
+        for track_id in frames_by_track:
+            if track_id is None:
+                continue
+            try:
+                meta_doc = firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(
+                    video_id_safe).collection("tracks_meta").document(f"{track_id:03d}").get()
+                jersey_by_track[track_id] = meta_doc.to_dict().get("jersey_number") if meta_doc.exists else None
+            except Exception:
+                jersey_by_track[track_id] = None
+
+    reps_data: List[Dict[str, Any]] = []
+
+    for track_id, frames in frames_by_track.items():
+        try:
+            rep_extractor = RepExtractor(
+                max_static_frames=settings.REP_MAX_STATIC_FRAMES,
+                max_gap_frames=settings.REP_MAX_GAP_FRAMES,
+                min_rep_duration=settings.REP_MIN_DURATION,
+                max_rep_duration=settings.REP_MAX_DURATION
+            )
+
+            # Try fast trajectory analyzer first (O(n log n) instead of O(n^2)).
+            try:
+                keypoints_sequence = [frame.keypoints for frame in frames]
+
+                fast_analyzer = FastTrajectoryAnalyzer(
+                    position_threshold=50.0,
+                    movement_threshold=10.0,
+                    rest_threshold=30.0
+                )
+
+                rep_segments = fast_analyzer.segment_into_reps_fast(
+                    keypoints_sequence,
+                    frame_shape=(540, 960, 3),  # Standard football video size
+                    min_rep_length=settings.REP_MIN_DURATION
+                )
+
+                if rep_segments:
+                    reps = []
+                    for rep_idx, (start, end) in enumerate(rep_segments):
+                        rep = type('Rep', (), {
+                            'start_frame': start,
+                            'end_frame': end,
+                            'duration_frames': end - start + 1
+                        })()
+                        reps.append(rep)
+                else:
+                    reps = rep_extractor.extract_reps(frames)
+            except Exception:
+                reps = rep_extractor.extract_reps(frames)
+
+        except Exception as e:
+            logger.warning(f"Rep extraction failed for track {track_id}: {e}")
+            reps = []
+
+        for rep_idx, rep in enumerate(reps):
+            rep_meta = {
+                "rep_index": rep_idx,
+                "start_frame": rep.start_frame,
+                "end_frame": rep.end_frame,
+                "duration_frames": rep.duration_frames,
+                "duration_seconds": rep.duration_frames / fps,
+            }
+            if track_id is not None:
+                rep_meta["track_id"] = track_id
+                rep_meta["jersey_number"] = jersey_by_track.get(track_id)
+            reps_data.append(rep_meta)
+
+    return reps_data, len(frames_by_track)
+
     return smoothed
