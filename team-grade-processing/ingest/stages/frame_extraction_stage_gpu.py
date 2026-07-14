@@ -273,7 +273,7 @@ def run_frame_extraction_stage(
                 "frames_extracted": frame_count,
                 "device": device_type,
             })
-        
+
         except Exception as e:
             error_code = "EXTRACTION_ERROR"
             logger.error(f"[{STAGE_NAME}] Frame extraction failed: {e}", extra={
@@ -283,7 +283,36 @@ def run_frame_extraction_stage(
                 "error_code": error_code
             }, exc_info=True)
             return False, error_code
-        
+
+        # -------- Chunk-based authenticity vision/motion pass (optional,
+        # non-fatal) - rides along with frame_extraction per the blueprint's
+        # "AI verification" section: reuses the frames just decoded above,
+        # no second video decode. Never allowed to fail this stage - any
+        # exception here is caught and logged, the pipeline proceeds exactly
+        # as if AUTHENTICITY_CHECK_ENABLED were off. --------
+
+        frame_signals = None
+        if getattr(settings, "AUTHENTICITY_CHECK_ENABLED", False):
+            try:
+                from processing.film_authenticity import analyze_frame_signals
+
+                sample_count = getattr(settings, "AUTHENTICITY_SAMPLE_FRAME_COUNT", 12)
+                step = max(1, len(frames_metadata) // sample_count)
+                sample_paths = [Path(f["path"]) for f in frames_metadata[::step][:sample_count]]
+                frame_signals = analyze_frame_signals(sample_paths)
+
+                logger.info(f"[{STAGE_NAME}] Authenticity vision/motion pass complete", extra={
+                    "video_id": video_id_safe,
+                    "flagged": frame_signals["flagged"],
+                    "confidence": frame_signals["confidence"],
+                    "sampled_frames": len(sample_paths),
+                })
+            except Exception as e:
+                logger.warning(f"[{STAGE_NAME}] Authenticity vision/motion pass failed (non-fatal): {e}", extra={
+                    "video_id": video_id_safe,
+                })
+                frame_signals = None
+
         # -------- Write frame metadata to Firestore --------
         
         try:
@@ -312,15 +341,23 @@ def run_frame_extraction_stage(
         # -------- Update stage status --------
         
         try:
-            db.collection(settings.COLLECTION_VIDEOS).document(video_id_safe).update({
+            update_fields = {
                 "stages.frame_extraction.status": "completed",
                 "stages.frame_extraction.total_frames": frame_count,
                 "stages.frame_extraction.fps": fps,
                 "stages.frame_extraction.device_type": device_type,
                 "stages.frame_extraction.completed_at": get_utc_timestamp(),
                 "frame_count": frame_count
-            })
-            
+            }
+            if frame_signals is not None:
+                update_fields["stages.frame_extraction.authenticity_vision_motion"] = frame_signals
+                # Top-level convenience field, same promotion pattern as
+                # authenticity_check_stage.py's authenticity_signals.file_integrity -
+                # lets GET /api/analysis read this without traversing stages.*.
+                update_fields["authenticity_signals.vision_motion"] = frame_signals
+
+            db.collection(settings.COLLECTION_VIDEOS).document(video_id_safe).update(update_fields)
+
             logger.info(f"[{STAGE_NAME}] Updated stage status", extra={
                 "video_id": video_id_safe,
                 "frames": frame_count,

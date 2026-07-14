@@ -23,7 +23,16 @@ logger = logging.getLogger(__name__)
 
 # Stage name constants
 STAGE_NAME = "download"
-STAGE_NEXT = "whistle_detection" if getattr(settings, "WHISTLE_DETECTION_ENABLED", False) else "frame_extraction"
+
+# authenticity_check runs first when both optional gates are on - it's the
+# cheap "fail-first" file-header check the blueprint frames it as, so it's
+# worth logging before whistle_detection's real audio-processing work.
+if getattr(settings, "AUTHENTICITY_CHECK_ENABLED", False):
+    STAGE_NEXT = "authenticity_check"
+elif getattr(settings, "WHISTLE_DETECTION_ENABLED", False):
+    STAGE_NEXT = "whistle_detection"
+else:
+    STAGE_NEXT = "frame_extraction"
 
 
 def run_download_stage(

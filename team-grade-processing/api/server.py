@@ -793,8 +793,17 @@ async def get_analysis(
         if track_id is not None:
             reps = [r for r in reps if r.get("track_id") == track_id]
 
+        # Combined authenticity flag - OR of whatever signals are present.
+        # Each signal (file_integrity from authenticity_check_stage.py,
+        # vision_motion from frame_extraction_stage_gpu.py) is written
+        # independently, so this just reads whatever's already on video_data
+        # with no extra Firestore call. Soft-flag here; Bridge Athletics'
+        # claim-to-profile route is the one place that hard-blocks on this.
+        authenticity_signals = video_data.get("authenticity_signals", {})
+        authenticity_flagged = any(sig.get("flagged") for sig in authenticity_signals.values())
+
         logger.info(f"Retrieved {len(reps)} rep analysis record(s) for {safe_video_id}")
-        return {"reps": reps}
+        return {"reps": reps, "authenticity_flagged": authenticity_flagged, "authenticity_signals": authenticity_signals}
 
     except HTTPException:
         raise

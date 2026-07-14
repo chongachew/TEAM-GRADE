@@ -22,20 +22,23 @@ logger = logging.getLogger(__name__)
 STAGE_NAME = "metadata"
 STAGE_NEXT = "download"
 
-# When MULTI_PLAYER_TRACKING_ENABLED, three extra stages (motion_compensation, detection,
-# tracking) run between frame_extraction and pose. Gated so existing single-athlete videos
-# keep the original 9-stage `stages` map shape until the new stages are proven.
+# Built by appending each optional stage only when its own flag is on, so the
+# pre-seeded `stages` map always matches whatever actually runs. (Previously
+# this was two hardcoded literal lists gated only on MULTI_PLAYER_TRACKING_ENABLED
+# - both branches silently omitted "whistle_detection" even though it
+# unconditionally runs when WHISTLE_DETECTION_ENABLED is set, so a video doc's
+# stages map never had a pending stages.whistle_detection entry until that
+# stage's own first .update() call created it. Rebuilt append-style here fixes
+# that as a side effect of adding authenticity_check the same way.)
+STAGE_SEQUENCE = ["metadata", "download"]
+if getattr(settings, "AUTHENTICITY_CHECK_ENABLED", False):
+    STAGE_SEQUENCE.append("authenticity_check")
+if getattr(settings, "WHISTLE_DETECTION_ENABLED", False):
+    STAGE_SEQUENCE.append("whistle_detection")
+STAGE_SEQUENCE.append("frame_extraction")
 if getattr(settings, "MULTI_PLAYER_TRACKING_ENABLED", False):
-    STAGE_SEQUENCE = [
-        "metadata", "download", "frame_extraction",
-        "motion_compensation", "detection", "tracking",
-        "pose", "torso_crop", "jersey_ocr", "rep_extraction", "biomechanics", "complete"
-    ]
-else:
-    STAGE_SEQUENCE = [
-        "metadata", "download", "frame_extraction", "pose", "torso_crop",
-        "jersey_ocr", "rep_extraction", "biomechanics", "complete"
-    ]
+    STAGE_SEQUENCE += ["motion_compensation", "detection", "tracking"]
+STAGE_SEQUENCE += ["pose", "torso_crop", "jersey_ocr", "rep_extraction", "biomechanics", "complete"]
 
 
 def run_metadata_stage(

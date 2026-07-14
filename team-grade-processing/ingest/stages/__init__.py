@@ -22,6 +22,8 @@ import logging
 from typing import Optional
 from .metadata_stage import run_metadata_stage
 from .download_stage import run_download_stage
+# Authenticity check: whole-file manipulation-heuristic gate, ahead of whistle_detection/frame_extraction
+from .authenticity_check_stage import run_authenticity_check_stage
 # Whistle detection: audio-based play-boundary cue, ahead of frame_extraction
 from .whistle_detection_stage import run_whistle_detection_stage
 # Phase 3 Week 2: GPU-accelerated frame extraction
@@ -48,7 +50,7 @@ logger = logging.getLogger(__name__)
 _import_from_config = False
 try:
     from config.constants import (
-        STAGE_METADATA, STAGE_DOWNLOAD, STAGE_WHISTLE_DETECTION, STAGE_FRAME_EXTRACTION,
+        STAGE_METADATA, STAGE_DOWNLOAD, STAGE_AUTHENTICITY_CHECK, STAGE_WHISTLE_DETECTION, STAGE_FRAME_EXTRACTION,
         STAGE_MOTION_COMPENSATION, STAGE_DETECTION, STAGE_TRACKING,
         STAGE_POSE, STAGE_TORSO_CROP, STAGE_JERSEY_OCR,
         STAGE_REP_EXTRACTION, STAGE_BIOMECHANICS, STAGE_COMPLETE
@@ -60,6 +62,7 @@ except ImportError as e:
     logger.warning(f"config.constants not found ({e}); using fallback stage constants")
     STAGE_METADATA = "metadata"
     STAGE_DOWNLOAD = "download"
+    STAGE_AUTHENTICITY_CHECK = "authenticity_check"
     STAGE_WHISTLE_DETECTION = "whistle_detection"
     STAGE_FRAME_EXTRACTION = "frame_extraction"
     STAGE_MOTION_COMPENSATION = "motion_compensation"
@@ -76,7 +79,7 @@ except ImportError as e:
 def _validate_stage_constants():
     """Validate all stage name constants are non-empty strings."""
     stages = [
-        STAGE_METADATA, STAGE_DOWNLOAD, STAGE_WHISTLE_DETECTION, STAGE_FRAME_EXTRACTION,
+        STAGE_METADATA, STAGE_DOWNLOAD, STAGE_AUTHENTICITY_CHECK, STAGE_WHISTLE_DETECTION, STAGE_FRAME_EXTRACTION,
         STAGE_MOTION_COMPENSATION, STAGE_DETECTION, STAGE_TRACKING,
         STAGE_POSE, STAGE_TORSO_CROP, STAGE_JERSEY_OCR,
         STAGE_REP_EXTRACTION, STAGE_BIOMECHANICS, STAGE_COMPLETE
@@ -96,6 +99,7 @@ __all__ = [
     # Stage handler functions (exported to prevent external hardcoding)
     "run_metadata_stage",
     "run_download_stage",
+    "run_authenticity_check_stage",
     "run_whistle_detection_stage",
     "run_frame_extraction_stage",
     "run_motion_compensation_stage",
@@ -110,6 +114,7 @@ __all__ = [
     # Stage name constants (use these instead of hardcoding strings)
     "STAGE_METADATA",
     "STAGE_DOWNLOAD",
+    "STAGE_AUTHENTICITY_CHECK",
     "STAGE_WHISTLE_DETECTION",
     "STAGE_FRAME_EXTRACTION",
     "STAGE_MOTION_COMPENSATION",
@@ -132,6 +137,7 @@ __all__ = [
 STAGE_HANDLERS = {
     STAGE_METADATA: run_metadata_stage,
     STAGE_DOWNLOAD: run_download_stage,
+    STAGE_AUTHENTICITY_CHECK: run_authenticity_check_stage,
     STAGE_WHISTLE_DETECTION: run_whistle_detection_stage,
     STAGE_FRAME_EXTRACTION: run_frame_extraction_stage,
     STAGE_MOTION_COMPENSATION: run_motion_compensation_stage,
@@ -164,6 +170,7 @@ except TypeError as e:
 STAGE_SEQUENCE = [
     STAGE_METADATA,
     STAGE_DOWNLOAD,
+    STAGE_AUTHENTICITY_CHECK,
     STAGE_WHISTLE_DETECTION,
     STAGE_FRAME_EXTRACTION,
     STAGE_MOTION_COMPENSATION,

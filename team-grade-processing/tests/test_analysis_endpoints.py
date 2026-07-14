@@ -161,7 +161,10 @@ class TestAnalysisEndpoint:
             response = client.get("/api/analysis/dQw4w9WgXcQ")
 
             assert response.status_code == 200
-            assert response.json() == {"reps": []}
+            # authenticity_flagged/authenticity_signals are additive fields -
+            # always present, empty/False when no authenticity_check_stage or
+            # frame_extraction authenticity pass has run yet for this video.
+            assert response.json() == {"reps": [], "authenticity_flagged": False, "authenticity_signals": {}}
 
     @pytest.mark.endpoints
     @pytest.mark.integration

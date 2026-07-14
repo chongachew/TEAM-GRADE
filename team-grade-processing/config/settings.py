@@ -43,6 +43,7 @@ PIPELINE_VERSION = "2.0"
 PIPELINE_STAGES = [
     "metadata",
     "download",
+    "authenticity_check",
     "whistle_detection",
     "frame_extraction",
     "motion_compensation",
@@ -263,6 +264,39 @@ AUDIO_FUSION_WEIGHTS = {
     "ste": 0.35,
     "spectral": 0.25,
 }
+
+# ============================================================================
+# AUTHENTICITY CHECK SETTINGS
+# ============================================================================
+# Port of VerifAI's (a separate project) heuristic detection concepts into this
+# server-side pipeline - see docs/team-grade-integration-blueprint.md in the
+# the-bridge.app repo, "AI verification" section. Two touchpoints: a whole-file
+# gate right after download (processing/film_authenticity.py's
+# analyze_file_integrity, run by ingest/stages/authenticity_check_stage.py),
+# and a chunk-based vision/motion pass riding along with frame_extraction
+# (analyze_frame_signals, called inline from frame_extraction_stage_gpu.py).
+# Both are soft-flag only inside this pipeline - never fail a stage, just write
+# a flag. Hard-blocking only happens on Bridge Athletics' claim-to-profile gate.
+
+# Master switch, same idiom as WHISTLE_DETECTION_ENABLED. Off by default so this
+# ships fully inert until proven, same as every other optional stage here.
+AUTHENTICITY_CHECK_ENABLED = os.getenv("AUTHENTICITY_CHECK_ENABLED", "false").lower() in ["true", "1", "yes"]
+
+# How many frames to sample (evenly spaced) out of frame_extraction's already-
+# decoded output for the vision/motion pass - not every frame, keeps it cheap.
+AUTHENTICITY_SAMPLE_FRAME_COUNT = int(os.getenv("AUTHENTICITY_SAMPLE_FRAME_COUNT", 12))
+
+# File-integrity gate (Part 1) thresholds
+AUTHENTICITY_MAX_KEYFRAME_INTERVAL_SEC = float(os.getenv("AUTHENTICITY_MAX_KEYFRAME_INTERVAL_SEC", 12.0))
+# ffprobe -read_intervals window used to sample pict_type without reading the
+# whole file's frame index (cheap, bounded cost).
+AUTHENTICITY_GOP_PROBE_WINDOW_SEC = float(os.getenv("AUTHENTICITY_GOP_PROBE_WINDOW_SEC", 30.0))
+
+# Vision/motion pass (Part 2) thresholds - all hand-tuned starting guesses, not
+# validated against real footage yet (same honesty as VerifAI's own docs).
+AUTHENTICITY_EDGE_DENSITY_VARIANCE_MIN = float(os.getenv("AUTHENTICITY_EDGE_DENSITY_VARIANCE_MIN", 0.0005))
+AUTHENTICITY_HISTOGRAM_CHISQR_SPIKE_THRESHOLD = float(os.getenv("AUTHENTICITY_HISTOGRAM_CHISQR_SPIKE_THRESHOLD", 5000.0))
+AUTHENTICITY_MOTION_DIFF_STATIC_THRESHOLD = float(os.getenv("AUTHENTICITY_MOTION_DIFF_STATIC_THRESHOLD", 1.0))
 
 # ============================================================================
 # REP EXTRACTION SETTINGS
