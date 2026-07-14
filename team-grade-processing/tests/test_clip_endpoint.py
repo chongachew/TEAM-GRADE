@@ -170,3 +170,117 @@ class TestGetRepClip:
         response = client.get("/api/reps/***/clip?track_id=7&rep_index=0")
 
         assert response.status_code == 400
+
+
+class TestGetRepClipWithOverlay:
+    """with_overlay=true (blueprint: "Player-highlighting box overlay").
+    Box-fetching/scale/filter-building logic itself is covered by
+    tests/test_box_overlay.py - these tests verify the endpoint wires it in
+    correctly and always falls back safely to the plain clip."""
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_overlay_applied_when_boxes_and_scale_available(self, client, mock_video_document, tmp_path):
+        video_path = tmp_path / "dQw4w9WgXcQ.mp4"
+        video_path.write_bytes(b"fake source video")
+        rep_doc = _make_doc({"rep_index": 0, "track_id": 7, "start_frame": 30, "end_frame": 90})
+
+        with patch("api.server.firestore_client") as mock_fs, \
+             patch("config.settings.get_video_path", return_value=video_path), \
+             patch("api.server.subprocess.run", side_effect=_fake_ffmpeg_success) as mock_run, \
+             patch("processing.box_overlay.fetch_track_boxes", return_value={i: [0.0, 0.0, 10.0, 10.0] for i in range(30, 91)}), \
+             patch("processing.box_overlay.get_source_resolution_scale", return_value=(1.0, 1.0)):
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_reps(mock_fs, [rep_doc])
+
+            response = client.get("/api/reps/dQw4w9WgXcQ/clip?track_id=7&rep_index=0&with_overlay=true")
+
+            assert response.status_code == 200, response.text
+            assert response.headers["X-Overlay-Applied"] == "true"
+            cmd = mock_run.call_args[0][0]
+            assert "-vf" in cmd
+            assert cmd[cmd.index("-vf") + 1].count("drawbox=") == 61
+            assert cmd[cmd.index("-c:v") + 1] == "libx264"
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_overlay_falls_back_to_plain_clip_when_no_box_data(self, client, mock_video_document, tmp_path):
+        video_path = tmp_path / "dQw4w9WgXcQ.mp4"
+        video_path.write_bytes(b"fake source video")
+        rep_doc = _make_doc({"rep_index": 0, "track_id": 7, "start_frame": 30, "end_frame": 90})
+
+        with patch("api.server.firestore_client") as mock_fs, \
+             patch("config.settings.get_video_path", return_value=video_path), \
+             patch("api.server.subprocess.run", side_effect=_fake_ffmpeg_success) as mock_run, \
+             patch("processing.box_overlay.fetch_track_boxes", return_value={}), \
+             patch("processing.box_overlay.get_source_resolution_scale", return_value=(1.0, 1.0)):
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_reps(mock_fs, [rep_doc])
+
+            response = client.get("/api/reps/dQw4w9WgXcQ/clip?track_id=7&rep_index=0&with_overlay=true")
+
+            assert response.status_code == 200, response.text
+            assert response.headers["X-Overlay-Applied"] == "false"
+            cmd = mock_run.call_args[0][0]
+            assert cmd[cmd.index("-c") + 1] == "copy"
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_overlay_skipped_entirely_for_single_athlete_sentinel(self, client, mock_video_document, tmp_path):
+        video_path = tmp_path / "dQw4w9WgXcQ.mp4"
+        video_path.write_bytes(b"fake source video")
+        rep_doc = _make_doc({"rep_index": 0, "start_frame": 30, "end_frame": 90})  # no track_id
+
+        with patch("api.server.firestore_client") as mock_fs, \
+             patch("config.settings.get_video_path", return_value=video_path), \
+             patch("api.server.subprocess.run", side_effect=_fake_ffmpeg_success), \
+             patch("processing.box_overlay.fetch_track_boxes") as mock_fetch:
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_reps(mock_fs, [rep_doc])
+
+            response = client.get("/api/reps/dQw4w9WgXcQ/clip?track_id=0&rep_index=0&with_overlay=true")
+
+            assert response.status_code == 200, response.text
+            assert response.headers["X-Overlay-Applied"] == "false"
+            mock_fetch.assert_not_called()
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_overlay_build_exception_falls_back_without_500(self, client, mock_video_document, tmp_path):
+        video_path = tmp_path / "dQw4w9WgXcQ.mp4"
+        video_path.write_bytes(b"fake source video")
+        rep_doc = _make_doc({"rep_index": 0, "track_id": 7, "start_frame": 30, "end_frame": 90})
+
+        with patch("api.server.firestore_client") as mock_fs, \
+             patch("config.settings.get_video_path", return_value=video_path), \
+             patch("api.server.subprocess.run", side_effect=_fake_ffmpeg_success) as mock_run, \
+             patch("processing.box_overlay.fetch_track_boxes", side_effect=RuntimeError("boom")):
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_reps(mock_fs, [rep_doc])
+
+            response = client.get("/api/reps/dQw4w9WgXcQ/clip?track_id=7&rep_index=0&with_overlay=true")
+
+            assert response.status_code == 200, response.text
+            assert response.headers["X-Overlay-Applied"] == "false"
+            cmd = mock_run.call_args[0][0]
+            assert cmd[cmd.index("-c") + 1] == "copy"
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_with_overlay_omitted_matches_existing_plain_behavior(self, client, mock_video_document, tmp_path):
+        video_path = tmp_path / "dQw4w9WgXcQ.mp4"
+        video_path.write_bytes(b"fake source video")
+        rep_doc = _make_doc({"rep_index": 0, "track_id": 7, "start_frame": 30, "end_frame": 90})
+
+        with patch("api.server.firestore_client") as mock_fs, \
+             patch("config.settings.get_video_path", return_value=video_path), \
+             patch("api.server.subprocess.run", side_effect=_fake_ffmpeg_success) as mock_run:
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_reps(mock_fs, [rep_doc])
+
+            response = client.get("/api/reps/dQw4w9WgXcQ/clip?track_id=7&rep_index=0")
+
+            assert response.status_code == 200
+            assert response.headers["X-Overlay-Applied"] == "false"
+            cmd = mock_run.call_args[0][0]
+            assert cmd[cmd.index("-c") + 1] == "copy"

@@ -1206,7 +1206,12 @@ async def correct_rep_boundary(video_id: str, request: RepCorrectionRequest) -> 
 
 
 @app.get("/api/reps/{video_id}/clip")
-async def get_rep_clip(video_id: str, track_id: int = Query(...), rep_index: int = Query(...)) -> FileResponse:
+async def get_rep_clip(
+    video_id: str,
+    track_id: int = Query(...),
+    rep_index: int = Query(...),
+    with_overlay: bool = Query(False),
+) -> FileResponse:
     """
     Cut and return a short clip of one rep's frame range, for the highlight-
     tape creation flow (blueprint: "Highlight tape creation"). Cuts from the
@@ -1216,10 +1221,21 @@ async def get_rep_clip(video_id: str, track_id: int = Query(...), rep_index: int
     this returns 404 rather than attempting a same-source re-fetch - that
     fallback is real future work, not needed while nothing purges files today.
 
-    Uses ffmpeg stream-copy (-c copy): fast, no re-encode, but the actual cut
-    point snaps to the nearest keyframe at/before the requested start - may
-    include a moment of footage before the play technically started, an
-    accepted tradeoff for a first version, not a bug to chase further here.
+    Uses ffmpeg stream-copy (-c copy) by default: fast, no re-encode, but the
+    actual cut point snaps to the nearest keyframe at/before the requested
+    start - may include a moment of footage before the play technically
+    started, an accepted tradeoff for a first version, not a bug to chase
+    further here.
+
+    with_overlay (blueprint: "Player-highlighting box overlay", off by
+    default): draws the claimed track's stored per-frame box into the clip.
+    This forces a re-encode (a filter can't run under -c copy) via
+    processing/box_overlay.py. Soft-flag, not a hard requirement: if the
+    track has no/too-sparse box data for this range (track_id=0's single-
+    athlete sentinel, an old video with no multi-player tracking data, or a
+    manually-corrected boundary extending past what tracking covered), this
+    silently falls back to the exact plain -c copy clip - the response's
+    X-Overlay-Applied header tells the caller which happened.
 
     Raises:
         HTTPException: 400 for an invalid video_id, 404 if the video/rep/
@@ -1271,14 +1287,61 @@ async def get_rep_clip(video_id: str, track_id: int = Query(...), rep_index: int
         tmp_dir = Path(tempfile.gettempdir())
         output_path = tmp_dir / f"{safe_video_id}_{track_id}_{rep_index}_{secrets.token_hex(4)}.mp4"
 
-        ffmpeg_cmd = [
-            "ffmpeg", "-y",
-            "-ss", str(start_seconds),
-            "-i", str(source_path),
-            "-t", str(duration_seconds),
-            "-c", "copy",
-            str(output_path),
-        ]
+        # -ss placed BEFORE -i for both the plain and overlay paths - input
+        # seeking is fast (seeks near the preceding keyframe) AND, once a
+        # re-encode is already happening (as the overlay path requires),
+        # frame-accurate too. Output seeking (-ss after -i) would instead
+        # force ffmpeg to decode the entire file from true frame 0 on every
+        # request - a real cost against full game film, not just this rep.
+        overlay_applied = False
+        drawbox_filter: Optional[str] = None
+        if with_overlay and track_id:
+            # track_id=0 is the single-athlete-mode sentinel - no real
+            # per-track data exists to draw from, so don't even try.
+            try:
+                from processing.box_overlay import (
+                    build_drawbox_filter,
+                    fetch_track_boxes,
+                    get_source_resolution_scale,
+                )
+
+                boxes = fetch_track_boxes(firestore_client, safe_video_id, track_id, start_frame, end_frame)
+                scale = get_source_resolution_scale(firestore_client, safe_video_id, source_path, start_frame)
+                if boxes and scale:
+                    drawbox_filter = build_drawbox_filter(
+                        boxes, start_frame, end_frame, settings.FRAME_EXTRACTION_FPS, scale[0], scale[1]
+                    )
+            except Exception as e:
+                # Never let a box-overlay failure take down the plain clip -
+                # same soft-flag philosophy as the authenticity check.
+                logger.warning(
+                    f"[get_rep_clip] Overlay build failed for {safe_video_id} rep {rep_index}, "
+                    f"falling back to plain clip: {e}"
+                )
+                drawbox_filter = None
+
+        if drawbox_filter:
+            ffmpeg_cmd = [
+                "ffmpeg", "-y",
+                "-ss", str(start_seconds),
+                "-i", str(source_path),
+                "-t", str(duration_seconds),
+                "-vf", drawbox_filter,
+                "-c:v", "libx264", "-preset", "veryfast",
+                "-c:a", "copy",
+                str(output_path),
+            ]
+            overlay_applied = True
+        else:
+            ffmpeg_cmd = [
+                "ffmpeg", "-y",
+                "-ss", str(start_seconds),
+                "-i", str(source_path),
+                "-t", str(duration_seconds),
+                "-c", "copy",
+                str(output_path),
+            ]
+
         result = subprocess.run(ffmpeg_cmd, capture_output=True, timeout=60)
 
         if result.returncode != 0 or not output_path.exists():
@@ -1288,11 +1351,15 @@ async def get_rep_clip(video_id: str, track_id: int = Query(...), rep_index: int
             )
             raise HTTPException(status_code=500, detail="Failed to cut clip")
 
-        logger.info(f"[OK] Cut clip for {safe_video_id} rep {rep_index} -> {output_path}")
+        logger.info(
+            f"[OK] Cut clip for {safe_video_id} rep {rep_index} -> {output_path} "
+            f"(overlay_applied={overlay_applied})"
+        )
 
         return FileResponse(
             str(output_path),
             media_type="video/mp4",
+            headers={"X-Overlay-Applied": "true" if overlay_applied else "false"},
             background=BackgroundTask(lambda: output_path.unlink(missing_ok=True)),
         )
 
