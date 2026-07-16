@@ -69,7 +69,13 @@ def ensure_dependencies():
 ensure_dependencies()
 
 from ingest.ingest_worker import IngestWorker
+# VideoStatus/IngestStage are plain str-Enums with no Firestore SDK
+# dependency at import time (google-cloud-firestore is imported lazily,
+# inside FirestoreClient.__init__) - safe to keep importing them from here
+# even though FirestoreClient itself is no longer constructed anywhere
+# (Pass 2a data-layer migration: see ingest/postgres_client.py).
 from ingest.firestore_client import FirestoreClient, VideoStatus, IngestStage
+from ingest.postgres_client import PostgresClient
 from ingest.youtube_metadata import YouTubeMetadataExtractor
 from ingest.utils.firestore_utils import COLLECTION_TRACKS, COLLECTION_TRACKS_META
 from ingest.stages.biomechanics_stage_vectorized import _extract_pose_features, _load_trait_configs
@@ -144,39 +150,44 @@ metadata_extractor = None
 queue_manager = None
 
 try:
-    # Step 1: Initialize Firestore (CRITICAL - all other components depend on it)
-    firestore_client = FirestoreClient()
-    logger.info("[OK] Firestore client initialized")
-    
+    # Step 1: Initialize Postgres (CRITICAL - all other components depend on it).
+    # Pass 2a data-layer migration: firestore_client (the module-level name)
+    # now holds a PostgresClient - every route below still calls
+    # firestore_client.<method>(...) / firestore_client.db... unchanged,
+    # serviced by PostgresClient's matching method surface + its .db
+    # Firestore-compat shim (see ingest/postgres_client.py).
+    firestore_client = PostgresClient()
+    logger.info("[OK] Postgres client initialized")
+
     # Step 2: Initialize QueueManager (CRITICAL for enqueuing)
     from ingest.queue_manager import QueueManager
     queue_manager = QueueManager(firestore_client)
     logger.info("[OK] Queue manager initialized")
-    
+
     # Step 3: Initialize IngestWorker (uses QueueManager internally)
     ingest_worker = IngestWorker()
     logger.info("[OK] Ingest worker initialized")
-    
+
     # Step 4: Initialize metadata extractor
     metadata_extractor = YouTubeMetadataExtractor()
     logger.info("[OK] Ingestion components initialized successfully")
-    
+
 except Exception as e:
     logger.warning(f"[WARN] Failed to initialize IngestWorker: {str(e)}")
     logger.info("[INFO] Will use fallback direct queue enqueue mode")
-    logger.info("[INFO] Firestore and queue manager must be available for fallback mode")
-    
+    logger.info("[INFO] Postgres and queue manager must be available for fallback mode")
+
     # Try to at least initialize critical components for fallback
     try:
         if not firestore_client:
-            firestore_client = FirestoreClient()
-            logger.info("[OK] Firestore client initialized (fallback)")
-        
+            firestore_client = PostgresClient()
+            logger.info("[OK] Postgres client initialized (fallback)")
+
         if firestore_client and not queue_manager:
             from ingest.queue_manager import QueueManager
             queue_manager = QueueManager(firestore_client)
             logger.info("[OK] Queue manager initialized (fallback)")
-        
+
         if not metadata_extractor:
             metadata_extractor = YouTubeMetadataExtractor()
             logger.info("[OK] Metadata extractor initialized (fallback)")

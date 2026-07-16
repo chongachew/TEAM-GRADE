@@ -1,5 +1,9 @@
 google-cloud-firestore>=2.11.0
 firebase-admin>=6.2.0
+# --- Postgres data layer (Pass 2a migration off Firestore) ---
+sqlalchemy>=2.0.0
+psycopg[binary]>=3.1.0
+alembic>=1.13.0
 opencv-python>=4.8.0
 numpy>=1.24.0
 # Pin bumped from 0.8.11: the Tasks API (vision.PoseLandmarkerOptions,
@@ -17,6 +21,9 @@ yt-dlp>=2023.12.0
 fastapi>=0.104.0
 uvicorn>=0.24.0
 pydantic>=2.0.0
+# Required by FastAPI's Form()/UploadFile() handling - POST /api/ingest/upload
+# (direct file upload) fails at route-registration time without it.
+python-multipart>=0.0.9
 
 # --- Multi-player detection/tracking/motion-compensation pivot ---
 # torch/torchvision explicit pin: previously only pulled in transitively via

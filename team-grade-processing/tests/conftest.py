@@ -8,6 +8,7 @@ Provides:
 - Configuration fixtures
 """
 
+import os
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from pathlib import Path
@@ -17,6 +18,68 @@ from datetime import datetime
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+
+
+# ============================================================================
+# Real Postgres fixtures (Pass 2a data-layer migration)
+# ============================================================================
+# Most of the existing suite mocks firestore_client entirely (MagicMock
+# substitution, see the `client` fixture below) and never touches a real
+# database. The handful of tests that exercise ingest/postgres_client.py,
+# ingest/utils/firestore_utils.py, or ingest/queue_manager.py directly
+# (notably the SKIP LOCKED concurrency test) need a real, disposable Postgres
+# instead - SQLAlchemy Core statements built with ON CONFLICT/FOR UPDATE
+# SKIP LOCKED are not meaningfully testable against a MagicMock chain.
+#
+# Point $DATABASE_URL at a local, disposable Postgres before running these
+# (see the docker run command in this project's migration notes / README):
+#   docker run -d --name tg-pg-test -e POSTGRES_PASSWORD=test \
+#     -e POSTGRES_DB=teamgrade_test -p 15432:5432 postgres:16
+#   export DATABASE_URL=postgresql://postgres:test@localhost:15432/teamgrade_test
+#   alembic upgrade head
+
+
+@pytest.fixture(scope="session")
+def pg_database_url():
+    """The real (local, disposable) Postgres DATABASE_URL for this test run.
+
+    Skips (rather than fails) every test that depends on this fixture when
+    DATABASE_URL isn't set, so the rest of the suite (which mocks Postgres
+    entirely) still runs fine in an environment with no database at all.
+    """
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        pytest.skip("DATABASE_URL not set - skipping real-Postgres test")
+    return url
+
+
+@pytest.fixture(scope="session")
+def pg_engine(pg_database_url):
+    """Session-scoped engine against the real test database. Assumes the
+    schema has already been created via `alembic upgrade head` - these tests
+    don't manage migrations themselves.
+    """
+    from ingest.postgres_client import make_engine
+
+    engine = make_engine(pg_database_url)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def pg_client(pg_engine, pg_database_url):
+    """A real PostgresClient wired to the test database, with every table
+    truncated before the test runs so each test starts from a clean slate
+    (simpler and faster than drop/recreate-per-test for this table count).
+    """
+    from ingest.postgres_client import PostgresClient
+    from ingest.db_schema import metadata
+
+    with pg_engine.begin() as conn:
+        for table in reversed(metadata.sorted_tables):
+            conn.execute(table.delete())
+
+    return PostgresClient(database_url=pg_database_url)
 
 
 # ============================================================================

@@ -1,0 +1,34 @@
+{
+  "family": "team-grade-worker",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::455646290581:role/bridge-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::455646290581:role/team-grade-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "team-grade-worker",
+      "image": "455646290581.dkr.ecr.us-east-1.amazonaws.com/team-grade-worker:latest",
+      "essential": true,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/team-grade-worker",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs",
+          "awslogs-create-group": "true"
+        }
+      },
+      "secrets": [
+        { "name": "GOOGLE_APPLICATION_CREDENTIALS_JSON", "valueFrom": "arn:aws:secretsmanager:us-east-1:455646290581:secret:bridge/team-grade/prod/gcp-service-account" },
+        { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:455646290581:secret:bridge/team-grade/prod/database-url" }
+      ],
+      "environment": [
+        { "name": "GCP_PROJECT_ID", "value": "the-bridge-athletics1" },
+        { "name": "S3_MEDIA_BUCKET", "value": "the-bridge-app-team-grade-media" },
+        { "name": "AWS_REGION", "value": "us-east-1" }
+      ]
+    }
+  ]
+}

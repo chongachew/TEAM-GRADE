@@ -23,7 +23,14 @@ import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 
+# VideoStatus is a plain str-Enum with no Firestore SDK dependency at import
+# time - safe to keep importing it from here (Pass 2a data-layer migration:
+# FirestoreClient itself is no longer constructed below, PostgresClient is -
+# see ingest/postgres_client.py). firestore_client.db... calls throughout
+# this file keep working unmodified against PostgresClient's Firestore-
+# compat .db shim.
 from ingest.firestore_client import FirestoreClient, VideoStatus
+from ingest.postgres_client import PostgresClient
 
 # Configure logging
 logging.basicConfig(
@@ -295,7 +302,7 @@ if __name__ == "__main__":
         logger.info("")
 
     try:
-        client = FirestoreClient()
+        client = PostgresClient()
 
         # Run cleanup
         summary = cleanup_stale_ingestion_entries(

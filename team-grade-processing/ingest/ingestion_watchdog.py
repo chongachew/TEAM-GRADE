@@ -17,7 +17,12 @@ import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 
+# VideoStatus/IngestStage are plain str-Enums with no Firestore SDK
+# dependency at import time - safe to keep importing them from here (Pass 2a
+# data-layer migration: FirestoreClient itself is no longer constructed
+# below, PostgresClient is - see ingest/postgres_client.py).
 from ingest.firestore_client import FirestoreClient, VideoStatus, IngestStage
+from ingest.postgres_client import PostgresClient
 
 # Configure logging
 logging.basicConfig(
@@ -222,7 +227,7 @@ if __name__ == "__main__":
     logger.info("=" * 70)
 
     try:
-        client = FirestoreClient()
+        client = PostgresClient()
         summary = repair_all_pending_videos(client, max_pending_minutes=30)
 
         logger.info("\n" + "=" * 70)

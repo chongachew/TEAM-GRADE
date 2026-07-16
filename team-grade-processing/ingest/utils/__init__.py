@@ -25,8 +25,6 @@ from .firestore_utils import (
     write_pose_batch,
     write_torso_crops_batch,
     write_reps_batch,
-    write_analysis_results,
-    update_rep_analysis,
     update_stage_status,
     write_jersey_number,
     mark_stage_attempt,
@@ -40,14 +38,14 @@ __all__ = [
     # FFmpeg utilities (video metadata and frame extraction)
     "FFmpegFrameExtractor",
     "extract_frames_from_video",
-    # Firestore utilities (persistence layer for all pipeline data)
+    # Postgres utilities (persistence layer for all pipeline data - see
+    # firestore_utils.py's module docstring for why this file/module name
+    # still says "firestore")
     "write_video_metadata",
     "write_frames_batch",
     "write_pose_batch",
     "write_torso_crops_batch",
     "write_reps_batch",
-    "write_analysis_results",
-    "update_rep_analysis",
     "update_stage_status",
     "write_jersey_number",
     "mark_stage_attempt",

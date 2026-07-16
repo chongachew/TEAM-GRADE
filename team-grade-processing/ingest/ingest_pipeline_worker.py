@@ -59,7 +59,7 @@ except Exception as e:
     logging.warning(f"Dependency check failed: {e}")
 
 from config import settings
-from .firestore_client import FirestoreClient
+from .postgres_client import PostgresClient
 from .queue_manager import QueueManager
 from .stages import STAGE_HANDLERS
 from .utils import setup_logging, mark_stage_attempt
@@ -107,16 +107,15 @@ class PipelineWorker:
         log_file = "logs/pipeline_worker.log"
         setup_logging(__name__, log_file)
 
-        # Initialize Firestore
+        # Initialize Postgres (Pass 2a data-layer migration - project_id/
+        # credentials_path are Firestore-era constructor args, kept for CLI
+        # back-compat but unused now; connection comes from DATABASE_URL).
         try:
-            self.firestore = FirestoreClient(
-                project_id=self.project_id,
-                credentials_path=self.credentials_path
-            )
+            self.firestore = PostgresClient(database_url=settings.DATABASE_URL)
             self.queue_manager = QueueManager(self.firestore)
-            logger.info("[OK] Firestore and queue initialized")
+            logger.info("[OK] Postgres and queue initialized")
         except Exception as e:
-            logger.error(f"[FAIL] Failed to initialize Firestore: {e}")
+            logger.error(f"[FAIL] Failed to initialize Postgres: {e}")
             raise
         
         # ✅ OPTIMIZATION: Preload ML models at startup (35% faster per video)

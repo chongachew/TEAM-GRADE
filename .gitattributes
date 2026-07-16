@@ -1,0 +1,10 @@
+# Shell scripts and Dockerfiles run inside Linux containers - they must always
+# have LF line endings regardless of the checkout platform. Without this, a
+# Windows checkout (autocrlf) silently converts docker-entrypoint.sh back to
+# CRLF on every git operation, which breaks the container's #!/bin/sh shebang
+# and crashes it at startup - this exact bug cost real debugging time before
+# being traced back to autocrlf rather than the file content itself.
+*.sh text eol=lf
+Dockerfile text eol=lf
+Dockerfile.* text eol=lf
+*.dockerfile text eol=lf

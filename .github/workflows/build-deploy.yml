@@ -5,12 +5,16 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: 455646290581.dkr.ecr.us-east-1.amazonaws.com
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
 
@@ -51,3 +55,105 @@ jobs:
           team-grade-processing/ingest/
           team-grade-frontend/build/
         retention-days: 30
+
+  # ── Deploy (main branch only) ────────────────────────────────────────────
+  # Pushes 3 images to the ECR repos created for this project
+  # (team-grade-api, team-grade-worker, team-grade-web) and force-deploys new
+  # ECS task revisions onto the existing bridge-cluster (reused from Bridge
+  # Athletics - see docs/infrastructure-plan.md for why this doesn't need its
+  # own cluster/VPC). No DB migration step yet: Phase 1 keeps TEAM-GRADE on
+  # Firestore, unlike Bridge Athletics' own deploy.yml which already migrates
+  # Postgres via a Lambda - that step gets added here only once Phase 2
+  # (Firestore -> Postgres) actually lands.
+  deploy:
+    name: Deploy to bridge-cluster
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::455646290581:role/team-grade-github-deploy-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./team-grade-processing
+          target: api
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/team-grade-api:${{ github.sha }}
+            ${{ env.ECR_REGISTRY }}/team-grade-api:latest
+          cache-from: type=gha,scope=team-grade-api
+          cache-to: type=gha,mode=max,scope=team-grade-api
+
+      - name: Build & push Worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./team-grade-processing
+          target: worker
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/team-grade-worker:${{ github.sha }}
+            ${{ env.ECR_REGISTRY }}/team-grade-worker:latest
+          cache-from: type=gha,scope=team-grade-worker
+          cache-to: type=gha,mode=max,scope=team-grade-worker
+
+      - name: Build & push Web image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./team-grade-frontend
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/team-grade-web:${{ github.sha }}
+            ${{ env.ECR_REGISTRY }}/team-grade-web:latest
+          build-args: |
+            REACT_APP_API_BASE=https://film-api.the-bridge.app
+          cache-from: type=gha,scope=team-grade-web
+          cache-to: type=gha,mode=max,scope=team-grade-web
+
+      - name: Deploy API to ECS
+        run: |
+          TASK_DEF=$(aws ecs describe-task-definition --task-definition team-grade-api --query 'taskDefinition' --output json)
+          NEW_TASK_DEF=$(echo $TASK_DEF | jq \
+            --arg IMAGE "${{ env.ECR_REGISTRY }}/team-grade-api:${{ github.sha }}" \
+            '.containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.placementConstraints,.compatibilities,.registeredAt,.registeredBy)')
+          NEW_REVISION=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
+          aws ecs update-service --cluster bridge-cluster --service team-grade-api --task-definition "$NEW_REVISION" --force-new-deployment
+
+      - name: Deploy Worker to ECS
+        run: |
+          TASK_DEF=$(aws ecs describe-task-definition --task-definition team-grade-worker --query 'taskDefinition' --output json)
+          NEW_TASK_DEF=$(echo $TASK_DEF | jq \
+            --arg IMAGE "${{ env.ECR_REGISTRY }}/team-grade-worker:${{ github.sha }}" \
+            '.containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.placementConstraints,.compatibilities,.registeredAt,.registeredBy)')
+          NEW_REVISION=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
+          aws ecs update-service --cluster bridge-cluster --service team-grade-worker --task-definition "$NEW_REVISION" --force-new-deployment
+
+      - name: Deploy Web to ECS
+        run: |
+          TASK_DEF=$(aws ecs describe-task-definition --task-definition team-grade-web --query 'taskDefinition' --output json)
+          NEW_TASK_DEF=$(echo $TASK_DEF | jq \
+            --arg IMAGE "${{ env.ECR_REGISTRY }}/team-grade-web:${{ github.sha }}" \
+            '.containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.placementConstraints,.compatibilities,.registeredAt,.registeredBy)')
+          NEW_REVISION=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
+          aws ecs update-service --cluster bridge-cluster --service team-grade-web --task-definition "$NEW_REVISION" --force-new-deployment
+
+      - name: Wait for ECS services to stabilize
+        run: |
+          aws ecs wait services-stable --cluster bridge-cluster --services team-grade-api team-grade-worker team-grade-web
+          echo "Deployment complete - ${{ github.sha }}"

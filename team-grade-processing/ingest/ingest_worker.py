@@ -70,34 +70,21 @@ class IngestWorker:
         # Import modules
         from .youtube_metadata import YouTubeMetadataExtractor
         from .youtube_downloader import YouTubeDownloader
-        from .firestore_client import FirestoreClient
+        from .postgres_client import PostgresClient
         from .queue_manager import QueueManager
 
         self.metadata_extractor = YouTubeMetadataExtractor()
         self.downloader = YouTubeDownloader(self.output_dir)
 
+        # Pass 2a data-layer migration: firestore_project/credentials are
+        # Firestore-era constructor args, kept for CLI back-compat but unused
+        # now; connection comes from the DATABASE_URL env var.
         try:
-            creds_path = get_credentials_path()
-            if creds_path:
-                logger.info(f"Using credentials file: {creds_path}")
-                self.firestore = FirestoreClient(
-                    project_id=firestore_project,
-                    credentials_path=creds_path
-                )
-            else:
-                logger.warning("No credentials file found, attempting Application Default Credentials...")
-                self.firestore = FirestoreClient(
-                    project_id=firestore_project
-                )
+            self.firestore = PostgresClient()
             self.queue_manager = QueueManager(self.firestore)
-            logger.info("[OK] Firestore initialized")
-        except FileNotFoundError as e:
-            logger.error(f"Firestore credentials not found: {e}")
-            logger.error("Please set up credentials at: team-grade-processing/credentials/service-account.json")
-            self.firestore = None
-            self.queue_manager = None
+            logger.info("[OK] Postgres initialized")
         except Exception as e:
-            logger.error(f"Failed to initialize Firestore: {e}")
+            logger.error(f"Failed to initialize Postgres: {e}")
             self.firestore = None
             self.queue_manager = None
 

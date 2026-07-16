@@ -18,7 +18,7 @@ from ingest.exceptions import (
     ValidationError, StageExecutionError, FirestoreError, QueueError
 )
 from ingest.validation import VideoIdValidator
-from ingest.utils.firestore_utils import get_utc_timestamp, write_analysis_results
+from ingest.utils.firestore_utils import get_utc_timestamp
 from processing.vectorized_traits import VectorizedTraitScorer, VectorizedBiomechanicsEngine
 
 logger = logging.getLogger(__name__)

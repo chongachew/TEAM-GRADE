@@ -71,7 +71,23 @@ DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() in ["true", "1", "yes"]
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")  # "development", "staging", "production"
 
 # ============================================================================
-# FIRESTORE CONFIGURATION
+# DATABASE CONFIGURATION (Postgres - Pass 2a data-layer migration)
+# ============================================================================
+
+# Postgres connection string (postgresql://user:pass@host:port/dbname).
+# Same env-var convention as Bridge Athletics' own packages/db (Drizzle):
+# read once from DATABASE_URL, no fallback default - ingest/postgres_client.py
+# raises a clear RuntimeError at construction time if this is unset rather
+# than silently connecting somewhere unintended. In production this comes
+# from AWS Secrets Manager (bridge/team-grade/prod/database-url); locally,
+# point it at a disposable Postgres (see team-grade-processing/README.md).
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# ============================================================================
+# FIRESTORE CONFIGURATION (retained for rollback; no longer load-bearing -
+# nothing in the runtime path constructs FirestoreClient anymore as of the
+# Postgres migration above, but ingest/firestore_client.py itself is left in
+# place and these constants aren't deleted, in case of rollback need)
 # ============================================================================
 
 # Google Cloud project (with environment variable override for multi-environment deployments)
