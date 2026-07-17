@@ -16,6 +16,7 @@ from ingest.exceptions import (
 )
 from ingest.validation import VideoIdValidator
 from ingest.utils.firestore_utils import get_utc_timestamp, write_jersey_number, write_jersey_number_for_track
+from ingest.s3_client import ensure_torso_crops_local
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +152,15 @@ def run_jersey_ocr_stage(
 
         # Get crops directory
         crops_dir = settings.get_torso_crops_dir(video_id_safe)
+        # Defensive guard: normally already-local (same worker process as
+        # torso_crop), but a retry could be picked up by a different worker
+        # instance - cheap check-then-fetch from S3.
+        try:
+            ensure_torso_crops_local(video_id_safe)
+        except Exception as e:
+            logger.debug(f"[{STAGE_NAME}] S3 torso-crops fallback unavailable (non-fatal): {e}", extra={
+                "video_id": video_id_safe,
+            })
         ocr_stop_threshold = settings.OCR_STOP_ON_CONFIDENCE
         multi_player = getattr(settings, 'MULTI_PLAYER_TRACKING_ENABLED', False)
 

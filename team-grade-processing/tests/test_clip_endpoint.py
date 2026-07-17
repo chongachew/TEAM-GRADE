@@ -143,6 +143,32 @@ class TestGetRepClip:
 
     @pytest.mark.endpoints
     @pytest.mark.integration
+    def test_get_clip_falls_back_to_s3_when_not_local(self, client, mock_video_document, tmp_path):
+        """Pass 2b data-layer migration: this API container never runs
+        download_stage on its own disk (that's the separate team-grade-
+        worker ECS service) - so the source video is fetched from S3 before
+        giving up, rather than 404ing outright."""
+        missing_path = tmp_path / "dQw4w9WgXcQ.mp4"
+        rep_doc = _make_doc({"rep_index": 0, "track_id": 7, "start_frame": 30, "end_frame": 90})
+
+        def _fake_download_video(video_id):
+            missing_path.write_bytes(b"fetched from s3")
+            return missing_path
+
+        with patch("api.server.firestore_client") as mock_fs, \
+             patch("config.settings.get_video_path", return_value=missing_path), \
+             patch("api.server.subprocess.run", side_effect=_fake_ffmpeg_success), \
+             patch("api.server.ensure_video_local", side_effect=_fake_download_video) as mock_ensure:
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_reps(mock_fs, [rep_doc])
+
+            response = client.get("/api/reps/dQw4w9WgXcQ/clip?track_id=7&rep_index=0")
+
+            assert response.status_code == 200, response.text
+            mock_ensure.assert_called_once_with("dQw4w9WgXcQ")
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
     def test_get_clip_ffmpeg_failure_returns_500(self, client, mock_video_document, tmp_path):
         video_path = tmp_path / "dQw4w9WgXcQ.mp4"
         video_path.write_bytes(b"fake source video")

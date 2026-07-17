@@ -40,3 +40,9 @@ supervision>=0.24.0
 # never wired into the real pipeline; now the whistle_detection stage) ---
 librosa>=0.10.0
 scipy>=1.11.0
+
+# --- S3 media storage (Pass 2b data-layer migration) ---
+# ingest/s3_client.py: raw video/frames/torso-crops now durably persisted to
+# the-bridge-app-team-grade-media (S3_MEDIA_BUCKET), the real shared storage
+# between the separate team-grade-api and team-grade-worker ECS services.
+boto3>=1.34.0

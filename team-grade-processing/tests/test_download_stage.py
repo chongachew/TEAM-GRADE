@@ -112,3 +112,54 @@ def test_invalid_video_id_fails_before_firestore_lookup():
     assert success is False
     assert error is not None
     mock_firestore.db.collection.assert_not_called()
+
+
+def test_uploads_downloaded_video_to_s3(tmp_path):
+    """Pass 2b data-layer migration: after a successful local download, the
+    stage must durably persist the raw video to the shared S3 bucket so the
+    (separate-disk) API container can serve it - see download_stage.py's
+    "Upload to S3" section."""
+    video_id = "dQw4w9WgXcQ"
+    video_path = tmp_path / f"{video_id}.mp4"
+    video_path.write_bytes(b"fake video bytes")
+
+    mock_firestore = _mock_firestore({"video_url": "https://vimeo.com/123456789"})
+    mock_queue = MagicMock()
+    mock_queue.enqueue_video.return_value = True
+
+    mock_downloader = MagicMock()
+    mock_downloader.download_video.return_value = video_path
+
+    with patch("config.settings.get_videos_dir", return_value=tmp_path), \
+         patch("ingest.youtube_downloader.YouTubeDownloader", return_value=mock_downloader), \
+         patch("ingest.utils.bandwidth_utils.BandwidthMeasurer.measure_bandwidth", return_value=10.0), \
+         patch("ingest.utils.bandwidth_utils.BandwidthMeasurer.select_format_for_video", return_value="best"), \
+         patch.object(download_stage, "upload_file") as mock_upload:
+        success, error = download_stage.run_download_stage(mock_firestore, video_id, mock_queue)
+
+    assert success is True, error
+    mock_upload.assert_called_once_with(video_path, "videos/dQw4w9WgXcQ/raw.mp4")
+
+
+def test_s3_upload_failure_does_not_fail_the_stage(tmp_path):
+    """Non-fatal by design - a flaky S3 upload must never turn a successful
+    local download into a failed stage."""
+    video_id = "dQw4w9WgXcQ"
+    video_path = tmp_path / f"{video_id}.mp4"
+    video_path.write_bytes(b"fake video bytes")
+
+    mock_firestore = _mock_firestore({"video_url": "https://vimeo.com/123456789"})
+    mock_queue = MagicMock()
+    mock_queue.enqueue_video.return_value = True
+
+    mock_downloader = MagicMock()
+    mock_downloader.download_video.return_value = video_path
+
+    with patch("config.settings.get_videos_dir", return_value=tmp_path), \
+         patch("ingest.youtube_downloader.YouTubeDownloader", return_value=mock_downloader), \
+         patch("ingest.utils.bandwidth_utils.BandwidthMeasurer.measure_bandwidth", return_value=10.0), \
+         patch("ingest.utils.bandwidth_utils.BandwidthMeasurer.select_format_for_video", return_value="best"), \
+         patch.object(download_stage, "upload_file", side_effect=RuntimeError("S3 is down")):
+        success, error = download_stage.run_download_stage(mock_firestore, video_id, mock_queue)
+
+    assert success is True, error

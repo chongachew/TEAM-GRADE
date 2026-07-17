@@ -20,6 +20,7 @@ from ingest.exceptions import (
 )
 from ingest.validation import VideoIdValidator
 from ingest.utils.firestore_utils import get_utc_timestamp, write_whistle_events_batch
+from ingest.s3_client import ensure_video_local
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,16 @@ def run_whistle_detection_stage(
 
         from pathlib import Path
         video_path = Path(video_path_str)
+        if not video_path.exists():
+            # Defensive guard: normally already-local (same worker process as
+            # download), but a retry could be picked up by a different
+            # worker instance - cheap check-then-fetch from S3.
+            try:
+                video_path = ensure_video_local(video_id_safe)
+            except Exception as e:
+                logger.debug(f"[{STAGE_NAME}] S3 video fallback unavailable (non-fatal): {e}", extra={
+                    "video_id": video_id_safe,
+                })
         if not video_path.exists():
             error_code = "VIDEO_FILE_NOT_FOUND"
             logger.error(f"[{STAGE_NAME}] Video file not found", extra={

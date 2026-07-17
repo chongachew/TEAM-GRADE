@@ -18,6 +18,7 @@ from ingest.exceptions import (
 from ingest.validation import VideoIdValidator
 from ingest.utils.firestore_utils import get_utc_timestamp, update_stage_status
 from ingest.utils.bandwidth_utils import BandwidthMeasurer
+from ingest.s3_client import upload_file, video_key
 
 logger = logging.getLogger(__name__)
 
@@ -272,11 +273,32 @@ def run_download_stage(
             }, exc_info=True)
             return False, error_code
         
+        # -------- Upload to S3 (best-effort; never fails the stage) --------
+        # Durably persists the raw video into the shared media bucket so the
+        # API container (which never runs this download stage on its own
+        # disk) can serve /media, the clip-cut endpoint, etc. without relying
+        # on this worker instance's local disk. Non-fatal by design: if S3 is
+        # briefly unavailable, the stage still succeeds locally and every
+        # downstream worker stage keeps working off the local file already on
+        # disk - nothing here should ever turn a successful local download
+        # into a failed stage.
+        try:
+            s3_key = video_key(video_id_safe)
+            upload_file(video_path, s3_key)
+            logger.info(f"[{STAGE_NAME}] Uploaded video to S3", extra={
+                "video_id": video_id_safe,
+                "s3_key": s3_key,
+            })
+        except Exception as e:
+            logger.warning(f"[{STAGE_NAME}] Failed to upload video to S3 (non-fatal): {e}", extra={
+                "video_id": video_id_safe,
+            })
+
         # -------- Update Firestore metadata --------
-        
+
         try:
             file_size_bytes = video_path.stat().st_size
-            
+
             db = firestore_client.db
             db.collection(settings.COLLECTION_VIDEOS).document(video_id_safe).update({
                 "stages.download.status": "completed",

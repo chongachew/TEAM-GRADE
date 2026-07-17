@@ -20,6 +20,7 @@ from ingest.exceptions import (
 )
 from ingest.validation import VideoIdValidator
 from ingest.utils.firestore_utils import get_utc_timestamp, write_detections_batch
+from ingest.s3_client import ensure_frames_local
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,15 @@ def run_detection_stage(
         import cv2
 
         frames_dir = settings.get_frames_dir(video_id_safe)
+        # Defensive guard: normally already-local (same worker process as
+        # frame_extraction), but a retry could be picked up by a different
+        # worker instance - cheap check-then-fetch from S3.
+        try:
+            ensure_frames_local(video_id_safe)
+        except Exception as e:
+            logger.debug(f"[{STAGE_NAME}] S3 frames fallback unavailable (non-fatal): {e}", extra={
+                "video_id": video_id_safe,
+            })
         frame_paths = sorted(frames_dir.glob("frame_*.jpg"))
 
         if not frame_paths:

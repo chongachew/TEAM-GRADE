@@ -252,6 +252,50 @@ class TestIngestUploadEndpoint:
 
     @pytest.mark.endpoints
     @pytest.mark.integration
+    def test_upload_uploads_video_to_s3(self, client, tmp_path):
+        """Pass 2b data-layer migration: a directly-uploaded file only ever
+        exists on this API container's disk - it must be durably persisted
+        to the shared S3 bucket so the (separate-disk) worker's
+        frame_extraction stage can get to it."""
+        fake_video_path = tmp_path / "fake_upload.mp4"
+
+        with patch("api.server.firestore_client") as mock_fs, \
+             patch("api.server.queue_manager") as mock_queue, \
+             patch("config.settings.get_video_path", return_value=fake_video_path), \
+             patch("api.server.upload_file") as mock_upload:
+            mock_fs.save_video_metadata.return_value = True
+            mock_queue.enqueue_video.return_value = True
+
+            response = client.post(
+                "/api/ingest/upload",
+                files={"file": ("game_film.mp4", b"fake video bytes", "video/mp4")},
+            )
+
+            assert response.status_code == 200
+            video_id = response.json()["video_id"]
+            mock_upload.assert_called_once_with(fake_video_path, f"videos/{video_id}/raw.mp4")
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_upload_s3_failure_does_not_fail_the_request(self, client, tmp_path):
+        fake_video_path = tmp_path / "fake_upload.mp4"
+
+        with patch("api.server.firestore_client") as mock_fs, \
+             patch("api.server.queue_manager") as mock_queue, \
+             patch("config.settings.get_video_path", return_value=fake_video_path), \
+             patch("api.server.upload_file", side_effect=RuntimeError("S3 is down")):
+            mock_fs.save_video_metadata.return_value = True
+            mock_queue.enqueue_video.return_value = True
+
+            response = client.post(
+                "/api/ingest/upload",
+                files={"file": ("game_film.mp4", b"fake video bytes", "video/mp4")},
+            )
+
+            assert response.status_code == 200
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
     def test_upload_missing_file_returns_422(self, client):
         response = client.post("/api/ingest/upload")
 

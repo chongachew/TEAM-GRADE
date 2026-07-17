@@ -8,13 +8,18 @@ FROM python:3.11-slim AS base
 # (frame extraction fallback, clip cutting, box overlay). libgl1/libglib2.0-0/
 # libsm6/libxext6: opencv-python's runtime shared-library deps on Debian slim,
 # missing these produces the classic "libGL.so.1: cannot open shared object
-# file" crash on first `import cv2`.
+# file" crash on first `import cv2`. libgles2/libegl1: mediapipe's pose
+# landmarker graph runner links against GLESv2/EGL even on the CPU delegate -
+# without these, model load fails with "libGLESv2.so.2: cannot open shared
+# object file", pose stage never completes on any video.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
+    libgles2 \
+    libegl1 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

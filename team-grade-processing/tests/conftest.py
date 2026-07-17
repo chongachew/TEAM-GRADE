@@ -15,6 +15,8 @@ from pathlib import Path
 import sys
 from datetime import datetime
 
+import boto3
+
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -80,6 +82,69 @@ def pg_client(pg_engine, pg_database_url):
             conn.execute(table.delete())
 
     return PostgresClient(database_url=pg_database_url)
+
+
+# ============================================================================
+# S3 safety net (Pass 2b data-layer migration)
+# ============================================================================
+# This dev machine (like most engineers') has real ~/.aws/credentials
+# configured for other work. Every test in this suite must be incapable of
+# making a real S3 API call against the real bucket, regardless of that -
+# not just "unlikely to" but structurally unable to. ingest/s3_client.py's
+# every operation funnels through the single _get_s3_client() seam, so
+# patching that one function here blocks all real network I/O by default.
+#
+# Tests that want to exercise real S3 *wire-protocol* behavior (moto-backed,
+# never real AWS) request the `moto_s3` fixture below, which layers its own
+# (moto-intercepted) client on top and takes precedence for the duration of
+# that test. Tests that want to verify a call site invokes ingest.s3_client's
+# functions correctly (without caring about S3 itself) patch those functions
+# directly, which never reaches this fixture at all.
+
+
+class _BlockedS3Client:
+    """Stand-in for a real boto3 S3 client that refuses to do anything.
+    Raising (rather than e.g. returning empty results) makes sure this is
+    loud in test output if a test's mocking is ever incomplete, while still
+    being caught cleanly by every call site's own non-fatal error handling
+    (download_file/file_exists_in_s3 catch broadly and return False/None;
+    ensure_*_local's callers already treat "unavailable" as a normal,
+    handled outcome)."""
+
+    def __getattr__(self, name):
+        def _blocked(*args, **kwargs):
+            raise RuntimeError(
+                f"Real S3 client method '{name}()' was invoked during a test. "
+                "Mock ingest.s3_client at the function boundary (or use the "
+                "moto_s3 fixture) instead of letting a test reach real AWS."
+            )
+        return _blocked
+
+
+@pytest.fixture(autouse=True)
+def _block_real_s3_calls(monkeypatch):
+    monkeypatch.setattr("ingest.s3_client._get_s3_client", lambda: _BlockedS3Client())
+
+
+@pytest.fixture
+def moto_s3(_block_real_s3_calls, monkeypatch):
+    """A real (moto-mocked, never-real-AWS) S3 client with the media bucket
+    pre-created, wired in as ingest.s3_client's client for the duration of
+    the test. Use this for tests that exercise ingest/s3_client.py's actual
+    upload/download logic against S3's wire protocol.
+
+    Depends on `_block_real_s3_calls` explicitly so fixture setup order is
+    guaranteed: this fixture's monkeypatch of `_get_s3_client` is applied
+    after (and therefore overrides) the blanket-block one.
+    """
+    from moto import mock_aws
+    import ingest.s3_client as s3_client_module
+
+    with mock_aws():
+        client = boto3.client("s3", region_name="us-east-1")
+        client.create_bucket(Bucket=s3_client_module.S3_MEDIA_BUCKET)
+        monkeypatch.setattr(s3_client_module, "_get_s3_client", lambda: client)
+        yield client
 
 
 # ============================================================================

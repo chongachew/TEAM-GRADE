@@ -24,6 +24,7 @@ from ingest.exceptions import (
 from ingest.validation import VideoIdValidator
 from ingest.utils.firestore_utils import get_utc_timestamp, write_pose_batch
 from processing.pose_track_matching import match_poses_to_tracks
+from ingest.s3_client import ensure_frames_local
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +126,16 @@ def run_pose_stage_lite(
         
         try:
             frames_dir = settings.get_frames_dir(video_id_safe)
-            
+            # Defensive guard: normally already-local (same worker process as
+            # frame_extraction), but a retry could be picked up by a
+            # different worker instance - cheap check-then-fetch from S3.
+            try:
+                ensure_frames_local(video_id_safe)
+            except Exception as e:
+                logger.debug(f"[{STAGE_NAME}] S3 frames fallback unavailable (non-fatal): {e}", extra={
+                    "video_id": video_id_safe,
+                })
+
             if not frames_dir.exists():
                 error_code = "FRAMES_NOT_FOUND"
                 logger.error(f"[{STAGE_NAME}] Frames directory not found", extra={

@@ -165,6 +165,59 @@ class TestTrackThumbnailEndpoint:
 
     @pytest.mark.endpoints
     @pytest.mark.integration
+    def test_get_thumbnail_falls_back_to_s3_when_not_local(self, client, mock_video_document, tmp_path):
+        """Pass 2b data-layer migration: this API container never runs
+        torso_crop_stage on its own disk (that's the separate team-grade-
+        worker ECS service) - so the crop file described by Postgres's
+        crop_path is fetched from S3 on demand rather than 404ing outright."""
+        crop_path_str = "torso_crops/dQw4w9WgXcQ/torso_000040_007.jpg"
+
+        def _fake_download(s3_key, local_path):
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            local_path.write_bytes(b"fetched from s3")
+            return True
+
+        with patch("api.server.firestore_client") as mock_fs, \
+             patch("config.settings.PROJECT_ROOT", tmp_path), \
+             patch("api.server.download_file", side_effect=_fake_download) as mock_download:
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_collection(mock_fs, {
+                "torso": [
+                    {"frame_index": 40, "track_id": 7, "crop_path": crop_path_str,
+                     "crop_box": [0, 0, 100, 100]},
+                ],
+            })
+
+            response = client.get("/api/tracks/dQw4w9WgXcQ/thumbnail/7")
+
+            assert response.status_code == 200
+            assert response.content == b"fetched from s3"
+            mock_download.assert_called_once_with(
+                "videos/dQw4w9WgXcQ/torso/torso_000040_007.jpg", tmp_path / crop_path_str
+            )
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_get_thumbnail_404_when_missing_locally_and_in_s3(self, client, mock_video_document, tmp_path):
+        crop_path_str = "torso_crops/dQw4w9WgXcQ/torso_000040_007.jpg"
+
+        with patch("api.server.firestore_client") as mock_fs, \
+             patch("config.settings.PROJECT_ROOT", tmp_path), \
+             patch("api.server.download_file", return_value=False):
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_collection(mock_fs, {
+                "torso": [
+                    {"frame_index": 40, "track_id": 7, "crop_path": crop_path_str,
+                     "crop_box": [0, 0, 100, 100]},
+                ],
+            })
+
+            response = client.get("/api/tracks/dQw4w9WgXcQ/thumbnail/7")
+
+            assert response.status_code == 404
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
     def test_get_thumbnail_no_crops_for_track_returns_404(self, client, mock_video_document):
         with patch("api.server.firestore_client") as mock_fs:
             mock_fs.get_video_status.return_value = mock_video_document

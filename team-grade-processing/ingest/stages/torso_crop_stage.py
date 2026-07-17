@@ -16,6 +16,7 @@ from ingest.exceptions import (
 )
 from ingest.validation import VideoIdValidator
 from ingest.utils.firestore_utils import get_utc_timestamp, write_torso_crops_batch
+from ingest.s3_client import ensure_frames_local, upload_directory, torso_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,16 @@ def run_torso_crop_stage(
 
         # Get frames directory
         frames_dir = settings.get_frames_dir(video_id_safe)
+        # Defensive guard: this stage runs in the same worker process as
+        # frame_extraction on the common path (frames already local), but a
+        # retry could in principle be picked up by a different worker
+        # instance - cheap check-then-fetch from S3 if that ever happens.
+        try:
+            ensure_frames_local(video_id_safe)
+        except Exception as e:
+            logger.debug(f"[{STAGE_NAME}] S3 frames fallback unavailable (non-fatal): {e}", extra={
+                "video_id": video_id_safe,
+            })
         frame_paths = sorted(frames_dir.glob("frame_*.jpg"))
         
         if not frame_paths:
@@ -211,6 +222,22 @@ def run_torso_crop_stage(
                 "error_code": error_code
             }, exc_info=True)
             return False, error_code
+
+        # -------- Upload torso crops to S3 (best-effort; never fails the
+        # stage) -------- One bulk upload_directory call, not per-crop -
+        # durably persists them so the API container's thumbnail endpoint
+        # (which never runs this stage on its own disk) can serve them.
+        if crops_created:
+            try:
+                uploaded = upload_directory(torso_dir, torso_prefix(video_id_safe))
+                logger.info(f"[{STAGE_NAME}] Uploaded torso crops to S3", extra={
+                    "video_id": video_id_safe,
+                    "uploaded_count": uploaded,
+                })
+            except Exception as e:
+                logger.warning(f"[{STAGE_NAME}] Failed to upload torso crops to S3 (non-fatal): {e}", extra={
+                    "video_id": video_id_safe,
+                })
 
         # Write to Firestore
         try:

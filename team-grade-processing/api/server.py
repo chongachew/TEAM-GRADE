@@ -98,6 +98,16 @@ from config import settings
 # download, rather than duplicating the WHISTLE_DETECTION_ENABLED check here.
 from ingest.stages.download_stage import STAGE_NEXT as UPLOAD_FIRST_STAGE
 from ingest.utils.firestore_utils import get_utc_timestamp
+from ingest.s3_client import (
+    upload_file,
+    download_file,
+    video_key,
+    torso_key,
+    file_exists_in_s3,
+    get_presigned_url,
+    ensure_video_local,
+    S3ObjectNotFoundError,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -137,11 +147,58 @@ if ui_path.exists():
 else:
     logger.warning(f"UI directory not found at {ui_path}")
 
-# Serve source video files for playback. Starlette's StaticFiles (FileResponse
-# under the hood) already supports HTTP range requests on this fastapi version,
-# so the <video> element's scrubber/seek works with no extra range-handling code.
-settings.get_videos_dir()  # ensure the directory exists before mounting it
-app.mount("/media", StaticFiles(directory=str(settings.VIDEOS_DIR)), name="media")
+# Serve source video files for playback. This used to be a StaticFiles mount
+# straight over settings.VIDEOS_DIR (Starlette's FileResponse under the hood
+# already supports HTTP range requests, so the <video> element's scrubber/
+# seek worked with no extra range-handling code) - but that only ever worked
+# when this API container happened to already have the file on its own local
+# disk, which the worker's download stage never puts there (separate ECS
+# service, separate disk). Redirecting to a presigned S3 GET URL instead
+# keeps the no-extra-range-handling property (S3 natively supports Range
+# requests) while actually working across containers. Falls back to serving
+# a local file directly (old behavior) if the video isn't in S3 yet for any
+# reason, so nothing regresses for a video mid-migration.
+settings.get_videos_dir()  # ensure the directory exists (upload endpoint writes directly into it)
+
+
+@app.get("/media/{video_id}.mp4")
+async def get_media_video(video_id: str):
+    """Serve (via presigned-URL redirect) the source video for playback -
+    see the module-level comment above for why this replaced a plain
+    StaticFiles mount over the local videos/ directory.
+
+    Raises:
+        HTTPException: 400 for an invalid video_id, 404 if the video isn't
+            available either in S3 or on this container's local disk.
+    """
+    try:
+        safe_video_id = settings.sanitize_id(video_id)
+    except (ValueError, ImportError) as e:
+        logger.warning(f"Invalid video_id format: {e}")
+        raise HTTPException(status_code=400, detail="Invalid video_id format")
+
+    try:
+        s3_key = video_key(safe_video_id)
+        if file_exists_in_s3(s3_key):
+            url = get_presigned_url(s3_key)
+            return RedirectResponse(url=url, status_code=302)
+
+        # Not in S3 (upload hasn't happened/completed yet, or this predates
+        # the migration) - fall back to serving straight off local disk if
+        # this particular container happens to have it, same as the old
+        # StaticFiles-mount behavior.
+        local_path = settings.get_video_path(safe_video_id)
+        if local_path.exists():
+            return FileResponse(str(local_path), media_type="video/mp4")
+
+        raise HTTPException(status_code=404, detail=f"Video {safe_video_id} not found")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[FAIL] Media retrieval error for {safe_video_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve video: {str(e)}")
+
 
 # Initialize ingestion components
 ingest_worker = None
@@ -584,6 +641,17 @@ async def ingest_uploaded_file(
         contents = await file.read()
         video_path.write_bytes(contents)
 
+        # Upload to S3 (best-effort; never fails the ingest request) - same
+        # non-fatal idiom as download_stage.py's upload, for the same reason:
+        # this file only exists on the API container's disk, but every
+        # pipeline stage after this one (frame_extraction, etc.) runs in the
+        # separate team-grade-worker ECS service, on its own separate disk.
+        try:
+            upload_file(video_path, video_key(video_id))
+            logger.info(f"Uploaded directly-uploaded video to S3: {video_key(video_id)}")
+        except Exception as e:
+            logger.warning(f"Failed to upload directly-uploaded video to S3 (non-fatal): {e}")
+
         skipped_at = get_utc_timestamp()
         basic_metadata: Dict[str, Any] = {
             "video_url": f"uploaded:{file.filename}",
@@ -1025,8 +1093,17 @@ async def get_track_thumbnail(video_id: str, track_id: int) -> FileResponse:
         # Defense in depth: confirm the resolved path is actually inside
         # PROJECT_ROOT before serving it, even though crop_path always
         # originates server-side from our own pipeline's writes.
-        if project_root not in crop_path.parents or not crop_path.exists():
+        if project_root not in crop_path.parents:
             raise HTTPException(status_code=404, detail="Thumbnail file not found")
+
+        if not crop_path.exists():
+            # This API container never ran torso_crop_stage on its own disk
+            # (that runs in the separate team-grade-worker ECS service, on
+            # its own disk) - fetch this one crop from the shared S3 bucket
+            # instead of 404ing outright. Targeted single-file fetch (not the
+            # whole video's torso/ prefix) since only this one crop is needed.
+            if not download_file(torso_key(safe_video_id, crop_path.name), crop_path):
+                raise HTTPException(status_code=404, detail="Thumbnail file not found")
 
         return FileResponse(str(crop_path), media_type="image/jpeg")
 
@@ -1352,10 +1429,17 @@ async def get_rep_clip(
 
         source_path = settings.get_video_path(safe_video_id)
         if not source_path.exists():
-            raise HTTPException(
-                status_code=404,
-                detail="Source video is no longer available locally - can't cut a clip",
-            )
+            # This API container never ran download_stage on its own disk
+            # (that runs in the separate team-grade-worker ECS service, on
+            # its own disk) - fetch the source video from the shared S3
+            # bucket before giving up on cutting a clip.
+            try:
+                source_path = ensure_video_local(safe_video_id)
+            except S3ObjectNotFoundError:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Source video is no longer available locally - can't cut a clip",
+                )
 
         start_seconds = start_frame / settings.FRAME_EXTRACTION_FPS
         duration_seconds = (end_frame - start_frame) / settings.FRAME_EXTRACTION_FPS

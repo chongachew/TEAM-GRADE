@@ -23,6 +23,7 @@ from ingest.exceptions import (
 from ingest.validation import VideoIdValidator
 from ingest.utils.firestore_utils import get_utc_timestamp, write_frames_batch
 from ingest.gpu_utils import FrameExtractorFactory
+from ingest.s3_client import upload_directory, frames_prefix, ensure_video_local
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +163,18 @@ def run_frame_extraction_stage(
                 })
             
             video_path = Path(video_path_str)
-            
+
+            if not video_path.exists():
+                # Defensive guard: normally already-local (same worker
+                # process as download), but a retry could be picked up by a
+                # different worker instance - cheap check-then-fetch from S3.
+                try:
+                    video_path = ensure_video_local(video_id_safe)
+                except Exception as e:
+                    logger.debug(f"[{STAGE_NAME}] S3 video fallback unavailable (non-fatal): {e}", extra={
+                        "video_id": video_id_safe,
+                    })
+
             if not video_path.exists():
                 error_code = "VIDEO_FILE_NOT_FOUND"
                 logger.error(f"[{STAGE_NAME}] Video file not found", extra={
@@ -283,6 +295,23 @@ def run_frame_extraction_stage(
                 "error_code": error_code
             }, exc_info=True)
             return False, error_code
+
+        # -------- Upload frames to S3 (best-effort; never fails the stage) --------
+        # One bulk upload_directory call rather than per-frame uploads - a
+        # video can have hundreds to thousands of frames. Durably persists
+        # them so the API container (which never runs this stage on its own
+        # disk) and any worker instance that picks up a later stage after a
+        # retry can rely on S3 rather than assuming this exact local disk.
+        try:
+            uploaded = upload_directory(output_dir, frames_prefix(video_id_safe))
+            logger.info(f"[{STAGE_NAME}] Uploaded frames to S3", extra={
+                "video_id": video_id_safe,
+                "uploaded_count": uploaded,
+            })
+        except Exception as e:
+            logger.warning(f"[{STAGE_NAME}] Failed to upload frames to S3 (non-fatal): {e}", extra={
+                "video_id": video_id_safe,
+            })
 
         # -------- Chunk-based authenticity vision/motion pass (optional,
         # non-fatal) - rides along with frame_extraction per the blueprint's
