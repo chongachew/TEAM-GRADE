@@ -61,8 +61,16 @@ except Exception as e:
 from config import settings
 from .postgres_client import PostgresClient
 from .queue_manager import QueueManager
-from .stages import STAGE_HANDLERS
+from .stages import STAGE_HANDLERS, STAGE_DETECTION, STAGE_TRACKING
 from .utils import setup_logging, mark_stage_attempt
+from .batch_dispatch import submit_gpu_stage_job
+
+# How often (in poll iterations) to sweep for queue items stuck in
+# "processing" - e.g. an AWS Batch GPU job that was interrupted (spot
+# reclaim, capacity error) without ever calling mark_completed/mark_failed.
+# Not a concern before Phase 3, since the only "processor" was this same
+# always-on loop and a crash here just meant the whole process restarted.
+STALL_CLEANUP_EVERY_N_ITERATIONS = 60
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +202,14 @@ class PipelineWorker:
                 iteration += 1
 
                 try:
+                    if iteration % STALL_CLEANUP_EVERY_N_ITERATIONS == 0:
+                        try:
+                            requeued = self.queue_manager.cleanup_stalled_items(timeout_minutes=30)
+                            if requeued:
+                                logger.warning(f"[Iteration {iteration}] Requeued {requeued} stalled item(s)")
+                        except Exception as e:
+                            logger.warning(f"[Iteration {iteration}] Stalled-item cleanup failed: {e}")
+
                     # Get next job from queue
                     queue_item = self.queue_manager.dequeue_next_video()
 
@@ -202,51 +218,7 @@ class PipelineWorker:
                         time.sleep(poll_interval)
                         continue
 
-                    # Validate queue_item structure
-                    if not all(k in queue_item for k in ["video_id", "stage", "_doc_id"]):
-                        logger.error(f"[Iteration {iteration}] Malformed queue item: missing required fields")
-                        time.sleep(poll_interval)
-                        continue
-
-                    video_id = queue_item.get("video_id")
-                    stage = queue_item.get("stage")
-                    queue_doc_id = queue_item.get("_doc_id")
-
-                    # Validate extracted fields are non-empty
-                    if not video_id or not isinstance(video_id, str):
-                        logger.error(f"[Iteration {iteration}] Invalid video_id from queue: {video_id}")
-                        time.sleep(poll_interval)
-                        continue
-                    if not stage or not isinstance(stage, str):
-                        logger.error(f"[Iteration {iteration}] Invalid stage from queue: {stage}")
-                        time.sleep(poll_interval)
-                        continue
-
-                    logger.info(f"[Iteration {iteration}] Processing: {video_id}/{stage}")
-
-                    # Process stage
-                    success, error_msg = self._process_stage(
-                        video_id,
-                        stage,
-                        queue_item
-                    )
-
-                    # Handle result
-                    if success:
-                        logger.info(
-                            f"[{video_id}] Stage {stage} completed successfully"
-                        )
-                        self.queue_manager.mark_completed(queue_doc_id)
-
-                    else:
-                        logger.error(
-                            f"[{video_id}] Stage {stage} failed: {error_msg}"
-                        )
-                        self.queue_manager.mark_failed(
-                            queue_doc_id,
-                            error_msg or "Unknown error",
-                            retry=True
-                        )
+                    self.process_queue_item(queue_item, iteration)
 
                 except KeyboardInterrupt:
                     logger.info("Worker interrupted by user")
@@ -262,6 +234,78 @@ class PipelineWorker:
         except Exception as e:
             logger.error(f"Fatal worker error: {e}", exc_info=True)
             raise
+
+    def process_queue_item(
+        self,
+        queue_item: Dict[str, Any],
+        iteration: Optional[int] = None,
+        force_inline: bool = False
+    ) -> None:
+        """Process one dequeued item to completion: validate, dispatch (inline
+        or to an AWS Batch GPU job), and finalize its queue status.
+
+        Shared by `run_worker()`'s poll loop and `run_batch_job.py` (the Batch
+        job entrypoint), so a GPU job finalizes its own queue item the exact
+        same way the CPU loop always has.
+
+        Args:
+            queue_item: Dequeued row, must contain video_id/stage/_doc_id.
+            iteration: Poll iteration number, for log messages only.
+            force_inline: Skip the AWS Batch routing check and always run the
+                stage handler in this process. Set by run_batch_job.py, which
+                IS the offloaded job - without this, a detection/tracking item
+                handed to it would just resubmit itself to Batch forever.
+        """
+        log_prefix = f"[Iteration {iteration}] " if iteration is not None else ""
+
+        # Validate queue_item structure
+        if not all(k in queue_item for k in ["video_id", "stage", "_doc_id"]):
+            logger.error(f"{log_prefix}Malformed queue item: missing required fields")
+            return
+
+        video_id = queue_item.get("video_id")
+        stage = queue_item.get("stage")
+        queue_doc_id = queue_item.get("_doc_id")
+
+        # Validate extracted fields are non-empty
+        if not video_id or not isinstance(video_id, str):
+            logger.error(f"{log_prefix}Invalid video_id from queue: {video_id}")
+            return
+        if not stage or not isinstance(stage, str):
+            logger.error(f"{log_prefix}Invalid stage from queue: {stage}")
+            return
+
+        # GPU-eligible stages are offloaded to AWS Batch when enabled, rather
+        # than run inline here. The Batch job's own entrypoint
+        # (run_batch_job.py) calls this same method to finalize the item, so
+        # we deliberately do NOT call mark_completed/mark_failed for it here -
+        # the item stays "processing" (already set by dequeue_next_video's
+        # SKIP LOCKED transaction) until the Batch job finishes.
+        if not force_inline and stage in (STAGE_DETECTION, STAGE_TRACKING) and settings.GPU_BATCH_ENABLED:
+            try:
+                job_id = submit_gpu_stage_job(
+                    video_id, stage, queue_doc_id, queue_item.get("payload")
+                )
+                logger.info(f"{log_prefix}[{video_id}] Submitted {stage} to AWS Batch: job {job_id}")
+            except Exception as e:
+                logger.error(f"{log_prefix}[{video_id}] Failed to submit {stage} to AWS Batch: {e}")
+                self.queue_manager.mark_failed(queue_doc_id, f"Batch submit failed: {e}", retry=True)
+            return
+
+        logger.info(f"{log_prefix}Processing: {video_id}/{stage}")
+
+        success, error_msg = self._process_stage(video_id, stage, queue_item)
+
+        if success:
+            logger.info(f"[{video_id}] Stage {stage} completed successfully")
+            self.queue_manager.mark_completed(queue_doc_id)
+        else:
+            logger.error(f"[{video_id}] Stage {stage} failed: {error_msg}")
+            self.queue_manager.mark_failed(
+                queue_doc_id,
+                error_msg or "Unknown error",
+                retry=True
+            )
 
     def _process_stage(
         self,

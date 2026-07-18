@@ -1,0 +1,56 @@
+# GPU variant of the shared Dockerfile - used ONLY by AWS Batch to run the
+# detection/tracking stages on a real NVIDIA GPU (see ingest/batch_dispatch.py,
+# run_batch_job.py). The regular Dockerfile's api/worker images stay CPU-only
+# and keep running on Fargate, which has no GPU support at all - this image
+# is never deployed to ECS.
+#
+# Needs a CUDA "devel" base (not "runtime"): pycuda compiles against the CUDA
+# toolkit at pip-install time - this is an existing, deliberate two-layer GPU
+# presence check already used by ingest/gpu_utils/model_device.py
+# (PyCUDA probe, then torch.cuda.is_available()), not something introduced by
+# this image.
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
+
+# Ubuntu 22.04's own repos ship Python 3.10, not the 3.11 the CPU image uses
+# (python:3.11-slim). Deliberately not adding the deadsnakes PPA for an exact
+# 3.11 match here - the codebase has no known 3.10-incompatible syntax, and a
+# third-party PPA is one more network dependency/failure mode in a build that
+# already needs to compile pycuda from source.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-dev \
+    ffmpeg \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libgles2 \
+    libegl1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3 /usr/bin/python
+
+WORKDIR /app
+
+COPY requirements.txt .
+# CUDA-enabled torch build (cu121, matching the base image's CUDA 12.1
+# toolkit) instead of the CPU wheels the regular Dockerfile installs, plus
+# pycuda for the presence-check layer in gpu_utils/gpu_detector.py.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --index-url https://download.pytorch.org/whl/cu121 torch torchvision \
+    && pip install pycuda \
+    && pip install -r requirements.txt
+
+RUN mkdir -p models && curl -L -o models/sam2.1_hiera_tiny.pt \
+    https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt
+
+COPY . .
+
+RUN chmod +x docker-entrypoint.sh
+ENTRYPOINT ["./docker-entrypoint.sh"]
+
+# Command is always overridden per Batch job submission
+# (see ingest/batch_dispatch.py) - this default only matters for a manual
+# `docker run` sanity check.
+CMD ["python", "run_batch_job.py", "--help"]

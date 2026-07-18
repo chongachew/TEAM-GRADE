@@ -222,6 +222,19 @@ TRACKING_REID_SIMILARITY_THRESHOLD = float(os.getenv("TRACKING_REID_SIMILARITY_T
 TRACKING_BATCH_SIZE = 100
 REID_OCR_TRIGGER_GAP_FRAMES = int(os.getenv("REID_OCR_TRIGGER_GAP_FRAMES", 45))
 
+# ============================================================================
+# GPU BATCH OFFLOAD (Phase 3 - AWS Batch)
+# ============================================================================
+# When enabled, the always-on CPU worker submits detection/tracking stages to
+# AWS Batch instead of running them inline (see ingest/batch_dispatch.py,
+# ingest_pipeline_worker.py's process_queue_item()). Independent of
+# DETECTION_USE_GPU/TRACKING_USE_GPU above - those control whether the stage
+# itself requests "cuda" once it's actually running; this controls WHERE it
+# runs. Default false so local dev/tests never depend on AWS Batch.
+GPU_BATCH_ENABLED = os.getenv("GPU_BATCH_ENABLED", "false").lower() in ["true", "1", "yes"]
+AWS_BATCH_JOB_QUEUE = os.getenv("AWS_BATCH_JOB_QUEUE", "team-grade-gpu-queue")
+AWS_BATCH_JOB_DEFINITION = os.getenv("AWS_BATCH_JOB_DEFINITION", "team-grade-gpu-stage")
+
 # SAM2 checkpoint (downloaded separately - not bundled with the sam2 pip package;
 # see models/README.md). Config file path is relative to the sam2 package's bundled
 # configs/ directory (hydra-resolved), not a filesystem path.

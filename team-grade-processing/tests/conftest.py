@@ -126,6 +126,25 @@ def _block_real_s3_calls(monkeypatch):
     monkeypatch.setattr("ingest.s3_client._get_s3_client", lambda: _BlockedS3Client())
 
 
+class _BlockedBatchClient:
+    """Same rationale as _BlockedS3Client: a test that reaches real AWS Batch
+    (submitting a real job) should fail loudly, not silently."""
+
+    def __getattr__(self, name):
+        def _blocked(*args, **kwargs):
+            raise RuntimeError(
+                f"Real Batch client method '{name}()' was invoked during a test. "
+                "Mock ingest.batch_dispatch._get_batch_client at the function "
+                "boundary instead of letting a test reach real AWS."
+            )
+        return _blocked
+
+
+@pytest.fixture(autouse=True)
+def _block_real_batch_calls(monkeypatch):
+    monkeypatch.setattr("ingest.batch_dispatch._get_batch_client", lambda: _BlockedBatchClient())
+
+
 @pytest.fixture
 def moto_s3(_block_real_s3_calls, monkeypatch):
     """A real (moto-mocked, never-real-AWS) S3 client with the media bucket
