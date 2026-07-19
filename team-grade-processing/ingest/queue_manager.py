@@ -271,7 +271,16 @@ class QueueManager:
         Args:
             queue_doc_id: Queue row id (stringified)
             error_message: Error description
-            retry: Whether to retry (increments retry count, re-queues)
+            retry: Whether to retry (increments retry count, re-queues) -
+                only takes effect while the row's retry_count is still below
+                its max_retries. Once exhausted, the item is marked
+                permanently "failed" regardless of this flag - previously
+                retry=True requeued unconditionally forever, so a single
+                item stuck failing the same way (e.g. a stage handler bug)
+                would win dequeue_next_video's oldest-first ordering on
+                every poll cycle and starve every other queued video
+                indefinitely, since there was no delay between iterations
+                while work was available.
 
         Returns:
             True if successful
@@ -280,8 +289,21 @@ class QueueManager:
             qid = int(queue_doc_id)
             now = _now()
             with self.engine.begin() as conn:
-                if retry:
-                    logger.info(f"Requeueing {qid} for retry")
+                row = conn.execute(
+                    select(ingestion_queue.c.retry_count, ingestion_queue.c.max_retries)
+                    .where(ingestion_queue.c.id == qid)
+                    .with_for_update()
+                ).mappings().first()
+                if row is None:
+                    logger.error(f"mark_failed: no such queue item {qid}")
+                    return False
+
+                next_retry_count = (row["retry_count"] or 0) + 1
+                max_retries = row["max_retries"] if row["max_retries"] is not None else 3
+                exhausted = next_retry_count >= max_retries
+
+                if retry and not exhausted:
+                    logger.info(f"Requeueing {qid} for retry ({next_retry_count}/{max_retries})")
                     stmt = (
                         sa_update(ingestion_queue)
                         .where(ingestion_queue.c.id == qid)
@@ -290,15 +312,24 @@ class QueueManager:
                             error=error_message,
                             failed_at=now,
                             updated_at=now,
-                            retry_count=ingestion_queue.c.retry_count + 1,
+                            retry_count=next_retry_count,
                         )
                     )
                 else:
-                    logger.error(f"Marked as failed (no retry): {qid}")
+                    if retry:
+                        logger.error(f"Marked as failed (retries exhausted {next_retry_count}/{max_retries}): {qid}")
+                    else:
+                        logger.error(f"Marked as failed (no retry): {qid}")
                     stmt = (
                         sa_update(ingestion_queue)
                         .where(ingestion_queue.c.id == qid)
-                        .values(status="failed", error=error_message, failed_at=now, updated_at=now)
+                        .values(
+                            status="failed",
+                            error=error_message,
+                            failed_at=now,
+                            updated_at=now,
+                            retry_count=next_retry_count,
+                        )
                     )
                 result = conn.execute(stmt)
                 return result.rowcount > 0

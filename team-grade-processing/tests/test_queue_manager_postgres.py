@@ -148,6 +148,42 @@ class TestSkipLockedDequeue:
         assert stats["queued"] == 1
         assert stats["processing"] == 0
 
+    def test_mark_failed_stops_requeueing_once_retries_exhausted(self, pg_client):
+        """A stage that always fails the same way must eventually land in
+        status='failed' rather than being requeued forever - previously
+        retry=True requeued unconditionally on every call, so a permanently
+        broken item would win dequeue_next_video's oldest-first ordering on
+        every poll cycle and starve every other queued video indefinitely."""
+        from ingest.db_schema import ingestion_queue
+        from ingest.queue_manager import QueueManager
+
+        video_id = "exhausttest01"
+        _insert_video(pg_client, video_id)
+        qm = QueueManager(pg_client)
+        qm.enqueue_video(video_id, stage="metadata", priority=5)
+
+        with pg_client.engine.begin() as conn:
+            conn.execute(
+                ingestion_queue.update()
+                .where(ingestion_queue.c.video_id == video_id)
+                .values(max_retries=3)
+            )
+
+        for _ in range(3):
+            item = qm.dequeue_next_video()
+            assert item is not None
+            assert qm.mark_failed(item["_doc_id"], "boom", retry=True) is True
+
+        # Retries exhausted (retry_count reached max_retries) - the item must
+        # no longer be claimable, and must be permanently "failed".
+        assert qm.dequeue_next_video() is None
+        with pg_client.engine.connect() as conn:
+            row = conn.execute(
+                ingestion_queue.select().where(ingestion_queue.c.video_id == video_id)
+            ).mappings().first()
+        assert row["status"] == "failed"
+        assert row["retry_count"] == 3
+
     def test_cleanup_stalled_items_requeues_old_processing_rows(self, pg_client):
         from ingest.queue_manager import QueueManager
         from ingest.db_schema import ingestion_queue
