@@ -64,6 +64,7 @@ from .queue_manager import QueueManager
 from .stages import STAGE_HANDLERS, STAGE_DETECTION, STAGE_TRACKING
 from .utils import setup_logging, mark_stage_attempt
 from .batch_dispatch import submit_gpu_stage_job
+from .retention import purge_unclaimed_videos
 
 # How often (in poll iterations) to sweep for queue items stuck in
 # "processing" - e.g. an AWS Batch GPU job that was interrupted (spot
@@ -71,6 +72,12 @@ from .batch_dispatch import submit_gpu_stage_job
 # Not a concern before Phase 3, since the only "processor" was this same
 # always-on loop and a crash here just meant the whole process restarted.
 STALL_CLEANUP_EVERY_N_ITERATIONS = 60
+
+# Far less frequent than the stall sweep above - this walks every S3 object
+# and DB row for each stale video, not a cheap query. Free-tool submissions
+# sit unclaimed for hours by design (the whole point is "try it, decide
+# later"), so there's no benefit to running this often.
+RETENTION_SWEEP_EVERY_N_ITERATIONS = 720
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +216,16 @@ class PipelineWorker:
                                 logger.warning(f"[Iteration {iteration}] Requeued {requeued} stalled item(s)")
                         except Exception as e:
                             logger.warning(f"[Iteration {iteration}] Stalled-item cleanup failed: {e}")
+
+                    if iteration % RETENTION_SWEEP_EVERY_N_ITERATIONS == 0:
+                        try:
+                            purged = purge_unclaimed_videos(
+                                self.firestore.engine, older_than_hours=settings.RETENTION_HOURS
+                            )
+                            if purged:
+                                logger.info(f"[Iteration {iteration}] Purged {purged} unclaimed video(s)")
+                        except Exception as e:
+                            logger.warning(f"[Iteration {iteration}] Retention sweep failed: {e}")
 
                     # Get next job from queue
                     queue_item = self.queue_manager.dequeue_next_video()

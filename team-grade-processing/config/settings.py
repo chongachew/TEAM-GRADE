@@ -247,6 +247,24 @@ AWS_BATCH_JOB_DEFINITION = os.getenv("AWS_BATCH_JOB_DEFINITION", "team-grade-gpu
 # supported state for local dev.
 YOUTUBE_COOKIES_FILE = os.getenv("YOUTUBE_COOKIES_FILE") or None
 
+# ============================================================================
+# RETENTION (unclaimed free-tool videos)
+# ============================================================================
+# Videos submitted through the-bridge.app's free, no-login tool sit around
+# forever unless claimed into a Bridge Athletics profile (see
+# ingest/retention.py, POST /api/videos/{video_id}/mark-claimed). This is how
+# long an unclaimed video's data (S3 objects + every DB row) is kept before
+# the periodic purge sweep removes it.
+RETENTION_HOURS = int(os.getenv("RETENTION_HOURS", "48"))
+
+# ============================================================================
+# RATE LIMITING (public, no-login ingest endpoints)
+# ============================================================================
+# slowapi rate-string format ("N/hour", "N/minute", etc.) - applies per
+# client IP, scoped to just POST /api/ingest and /api/ingest/upload (the two
+# routes a completely anonymous visitor can call), not the whole API.
+INGEST_RATE_LIMIT = os.getenv("INGEST_RATE_LIMIT", "20/hour")
+
 # SAM2 checkpoint (downloaded separately - not bundled with the sam2 pip package;
 # see models/README.md). Config file path is relative to the sam2 package's bundled
 # configs/ directory (hydra-resolved), not a filesystem path.

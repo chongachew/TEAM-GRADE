@@ -153,6 +153,28 @@ def file_exists_in_s3(s3_key: str) -> bool:
         return False
 
 
+def delete_video_prefix(video_id: str) -> int:
+    """Delete every S3 object under videos/{video_id}/ (raw video, frames,
+    torso crops) - used by the retention sweep for never-claimed videos.
+    Returns the count of objects deleted; safe to call on a video with no
+    objects at all (returns 0).
+    """
+    prefix = f"videos/{video_id}/"
+    client = _get_s3_client()
+    deleted = 0
+    paginator = client.get_paginator("list_objects_v2")
+    try:
+        for page in paginator.paginate(Bucket=S3_MEDIA_BUCKET, Prefix=prefix):
+            keys = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
+            if not keys:
+                continue
+            client.delete_objects(Bucket=S3_MEDIA_BUCKET, Delete={"Objects": keys})
+            deleted += len(keys)
+    except (BotoCoreError, ClientError) as e:
+        logger.warning(f"delete_video_prefix({video_id}) failed partway: {e}")
+    return deleted
+
+
 def get_presigned_url(s3_key: str, expires_in: int = 3600) -> str:
     return _get_s3_client().generate_presigned_url(
         "get_object",

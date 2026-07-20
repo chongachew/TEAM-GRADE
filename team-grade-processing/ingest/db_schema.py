@@ -74,6 +74,11 @@ videos = Table(
     Column("archived_at", TIMESTAMP(timezone=True)),
     Column("error", Text),
     Column("authenticity_signals", JSONB),
+    # Set by POST /api/videos/{video_id}/mark-claimed, called by Bridge
+    # Athletics right after a successful claim (film-stats or a reel).
+    # NULL means "never claimed" - the retention sweep only ever purges
+    # videos where this is still NULL past the retention window.
+    Column("claimed_at", TIMESTAMP(timezone=True)),
     Column("created_at", TIMESTAMP(timezone=True)),
     Column("updated_at", TIMESTAMP(timezone=True)),
     Column("completed_at", TIMESTAMP(timezone=True)),

@@ -24,6 +24,8 @@ pydantic>=2.0.0
 # Required by FastAPI's Form()/UploadFile() handling - POST /api/ingest/upload
 # (direct file upload) fails at route-registration time without it.
 python-multipart>=0.0.9
+# Per-IP rate limiting on the public, no-login /api/ingest endpoints.
+slowapi>=0.1.9
 
 # --- Multi-player detection/tracking/motion-compensation pivot ---
 # torch/torchvision explicit pin: previously only pulled in transitively via

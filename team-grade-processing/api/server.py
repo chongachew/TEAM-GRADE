@@ -12,13 +12,16 @@ import tempfile
 from typing import Optional, Dict, Any
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, HttpUrl
 from pathlib import Path
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Add parent directory to path to import ingest modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -126,6 +129,13 @@ app = FastAPI(
     description="API for YouTube video ingestion into TEAM-GRADE system",
     version="1.0.0"
 )
+
+# Per-IP rate limiting - only applied to /api/ingest and /api/ingest/upload
+# (see their decorators below), the two endpoints a completely anonymous,
+# no-login visitor can call. Everything else stays unlimited.
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Add CORS middleware - MUST be added before routes
 app.add_middleware(
@@ -378,21 +388,22 @@ async def options_status(video_id: str):
 
 
 @app.post("/api/ingest", response_model=IngestResponse)
-async def ingest_video(request: IngestRequest) -> IngestResponse:
+@limiter.limit(settings.INGEST_RATE_LIMIT)
+async def ingest_video(request: Request, body: IngestRequest) -> IngestResponse:
     """
     Ingest a YouTube video.
-    
+
     Args:
-        request: IngestRequest with YouTube URL
-        
+        body: IngestRequest with YouTube URL
+
     Returns:
         IngestResponse with video_id and queued status
-        
+
     Raises:
         HTTPException: If URL is invalid or ingestion fails
     """
-    logger.info(f"POST /api/ingest - URL: {request.video_url}")
-    
+    logger.info(f"POST /api/ingest - URL: {body.video_url}")
+
     if not metadata_extractor:
         raise HTTPException(
             status_code=503,
@@ -401,7 +412,7 @@ async def ingest_video(request: IngestRequest) -> IngestResponse:
     
     try:
         # Validate URL format
-        url = request.video_url.strip()
+        url = body.video_url.strip()
         if not metadata_extractor.validate_youtube_url(url):
             logger.warning(f"Invalid YouTube URL: {url}")
             raise HTTPException(
@@ -499,12 +510,12 @@ async def ingest_video(request: IngestRequest) -> IngestResponse:
                         "created_at": datetime.now().isoformat(),
                         "stages": {stage: {"status": "pending"} for stage in ALL_STAGES},
                     }
-                    if request.team_id:
-                        basic_metadata["team_id"] = request.team_id
-                    if request.player_number:
-                        basic_metadata["player_number"] = request.player_number
-                    if request.position:
-                        basic_metadata["position"] = request.position
+                    if body.team_id:
+                        basic_metadata["team_id"] = body.team_id
+                    if body.player_number:
+                        basic_metadata["player_number"] = body.player_number
+                    if body.position:
+                        basic_metadata["position"] = body.position
                     
                     # Save video record
                     firestore_client.save_video_metadata(video_id, basic_metadata)
@@ -605,7 +616,9 @@ async def ingest_video(request: IngestRequest) -> IngestResponse:
 
 
 @app.post("/api/ingest/upload", response_model=IngestResponse)
+@limiter.limit(settings.INGEST_RATE_LIMIT)
 async def ingest_uploaded_file(
+    request: Request,
     file: UploadFile = File(...),
     team_id: Optional[str] = Form(None),
     player_number: Optional[int] = Form(None),
@@ -1356,6 +1369,34 @@ async def correct_rep_boundary(video_id: str, request: RepCorrectionRequest) -> 
             f"[FAIL] Rep boundary correction error for {safe_video_id}: {str(e)}", exc_info=True
         )
         raise HTTPException(status_code=500, detail=f"Failed to correct rep boundary: {str(e)}")
+
+
+@app.post("/api/videos/{video_id}/mark-claimed")
+async def mark_video_claimed(video_id: str) -> Dict[str, Any]:
+    """
+    Called by Bridge Athletics right after a successful claim (POST
+    /video/film-stats or /video/reels/from-team-grade) so the retention
+    sweep (ingest/retention.py) knows not to purge this video. Idempotent -
+    calling it again just refreshes claimed_at.
+    """
+    try:
+        safe_video_id = settings.sanitize_id(video_id)
+    except (ValueError, ImportError) as e:
+        logger.warning(f"Invalid video_id format: {e}")
+        raise HTTPException(status_code=400, detail="Invalid video_id format")
+
+    if not firestore_client:
+        raise HTTPException(status_code=503, detail="Firestore client not available")
+
+    video_data = firestore_client.get_video_status(safe_video_id)
+    if not video_data:
+        raise HTTPException(status_code=404, detail=f"Video {safe_video_id} not found")
+
+    firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(safe_video_id).update({
+        "claimed_at": get_utc_timestamp(),
+    })
+    logger.info(f"[OK] Marked video {safe_video_id} as claimed")
+    return {"video_id": safe_video_id, "claimed": True}
 
 
 @app.get("/api/reps/{video_id}/clip")
