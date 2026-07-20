@@ -184,6 +184,44 @@ class TestSkipLockedDequeue:
         assert row["status"] == "failed"
         assert row["retry_count"] == 3
 
+    def test_mark_failed_exhausted_propagates_to_video_stages_and_videos(self, pg_client):
+        """GET /api/ingest/{id}/status reads videos.status/video_stages, not
+        the queue - so a permanent queue failure must also be written there,
+        or the API keeps reporting a stale "pending" status and a frozen
+        progress % forever, indistinguishable from a video still processing."""
+        from ingest.db_schema import ingestion_queue, video_stages, videos
+        from ingest.queue_manager import QueueManager
+
+        video_id = "propagatetest01"
+        _insert_video(pg_client, video_id)
+        qm = QueueManager(pg_client)
+        qm.enqueue_video(video_id, stage="download", priority=5)
+
+        with pg_client.engine.begin() as conn:
+            conn.execute(
+                ingestion_queue.update()
+                .where(ingestion_queue.c.video_id == video_id)
+                .values(max_retries=1)
+            )
+
+        item = qm.dequeue_next_video()
+        assert qm.mark_failed(item["_doc_id"], "DOWNLOAD_FAILED", retry=True) is True
+
+        with pg_client.engine.connect() as conn:
+            video_row = conn.execute(
+                videos.select().where(videos.c.video_id == video_id)
+            ).mappings().first()
+            stage_row = conn.execute(
+                video_stages.select().where(
+                    (video_stages.c.video_id == video_id)
+                    & (video_stages.c.stage_name == "download")
+                )
+            ).mappings().first()
+
+        assert video_row["status"] == "failed"
+        assert video_row["error"] == "DOWNLOAD_FAILED"
+        assert stage_row["status"] == "failed"
+
     def test_cleanup_stalled_items_requeues_old_processing_rows(self, pg_client):
         from ingest.queue_manager import QueueManager
         from ingest.db_schema import ingestion_queue

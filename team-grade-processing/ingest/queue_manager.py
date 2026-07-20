@@ -25,8 +25,9 @@ from datetime import datetime, timezone, timedelta
 from collections import deque
 
 from sqlalchemy import select, update as sa_update, delete as sa_delete, func, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from ingest.db_schema import ingestion_queue
+from ingest.db_schema import ingestion_queue, video_stages, videos
 
 logger = logging.getLogger(__name__)
 
@@ -290,7 +291,12 @@ class QueueManager:
             now = _now()
             with self.engine.begin() as conn:
                 row = conn.execute(
-                    select(ingestion_queue.c.retry_count, ingestion_queue.c.max_retries)
+                    select(
+                        ingestion_queue.c.video_id,
+                        ingestion_queue.c.stage,
+                        ingestion_queue.c.retry_count,
+                        ingestion_queue.c.max_retries,
+                    )
                     .where(ingestion_queue.c.id == qid)
                     .with_for_update()
                 ).mappings().first()
@@ -331,6 +337,30 @@ class QueueManager:
                             retry_count=next_retry_count,
                         )
                     )
+
+                    # Permanent failure - propagate to video_stages/videos too,
+                    # not just the queue row. Previously nothing wrote this
+                    # back, so GET /api/ingest/{id}/status (which reads
+                    # video_stages/videos, not the queue) kept reporting a
+                    # stale "pending" status and frozen progress % forever -
+                    # from the frontend's perspective a permanently-failed
+                    # video looked identical to one still processing.
+                    video_stage_stmt = pg_insert(video_stages).values(
+                        video_id=row["video_id"],
+                        stage_name=row["stage"],
+                        status="failed",
+                        extra={"error": error_message},
+                    ).on_conflict_do_update(
+                        index_elements=["video_id", "stage_name"],
+                        set_={"status": "failed", "extra": {"error": error_message}},
+                    )
+                    conn.execute(video_stage_stmt)
+                    conn.execute(
+                        sa_update(videos)
+                        .where(videos.c.video_id == row["video_id"])
+                        .values(status="failed", error=error_message, updated_at=now)
+                    )
+
                 result = conn.execute(stmt)
                 return result.rowcount > 0
 
