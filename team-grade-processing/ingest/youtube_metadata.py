@@ -373,6 +373,9 @@ class YouTubeMetadataExtractor:
                 "no_warnings": True,
                 "extract_flat": False,
             }
+            from config import settings
+            if settings.YOUTUBE_COOKIES_FILE:
+                ydl_opts["cookiefile"] = settings.YOUTUBE_COOKIES_FILE
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)

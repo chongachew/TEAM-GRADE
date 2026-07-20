@@ -20,4 +20,12 @@ if [ -n "$GOOGLE_APPLICATION_CREDENTIALS_JSON" ]; then
   export GOOGLE_APPLICATION_CREDENTIALS=/credentials/service-account.json
 fi
 
+if [ -n "$YOUTUBE_COOKIES_CONTENT" ]; then
+  # Same never-bake-a-secret-into-the-image pattern as the GCP credentials
+  # above - materialize the Secrets Manager value to disk at startup instead.
+  mkdir -p /credentials
+  printf '%s' "$YOUTUBE_COOKIES_CONTENT" > /credentials/youtube-cookies.txt
+  export YOUTUBE_COOKIES_FILE=/credentials/youtube-cookies.txt
+fi
+
 exec "$@"

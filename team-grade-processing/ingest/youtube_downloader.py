@@ -106,6 +106,13 @@ class YouTubeDownloader:
             "retries": max_retries,
         }
 
+        # YouTube's bot-check ("Sign in to confirm you're not a bot") blocks
+        # this server's IP even after yt-dlp's own client fallbacks - a
+        # signed-in account's cookies is the mitigation. See config/settings.py.
+        from config import settings
+        if settings.YOUTUBE_COOKIES_FILE:
+            ydl_opts["cookiefile"] = settings.YOUTUBE_COOKIES_FILE
+
         # Attempt download with retries
         last_error = None
         for attempt in range(max_retries):
@@ -191,6 +198,9 @@ class YouTubeDownloader:
                 "no_warnings": True,
                 "extract_flat": False,
             }
+            from config import settings
+            if settings.YOUTUBE_COOKIES_FILE:
+                ydl_opts["cookiefile"] = settings.YOUTUBE_COOKIES_FILE
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)

@@ -235,6 +235,18 @@ GPU_BATCH_ENABLED = os.getenv("GPU_BATCH_ENABLED", "false").lower() in ["true", 
 AWS_BATCH_JOB_QUEUE = os.getenv("AWS_BATCH_JOB_QUEUE", "team-grade-gpu-queue")
 AWS_BATCH_JOB_DEFINITION = os.getenv("AWS_BATCH_JOB_DEFINITION", "team-grade-gpu-stage")
 
+# ============================================================================
+# YOUTUBE COOKIES (bot-check bypass)
+# ============================================================================
+# YouTube's server-side bot-detection ("Sign in to confirm you're not a bot")
+# blocks yt-dlp downloads from datacenter IPs (this worker's AWS IP included)
+# even after yt-dlp exhausts its own automatic player-client fallbacks.
+# docker-entrypoint.sh writes YOUTUBE_COOKIES_CONTENT (a Secrets Manager
+# value, same pattern as GOOGLE_APPLICATION_CREDENTIALS_JSON below) out to
+# this path at container startup - None (no cookies file) is a normal,
+# supported state for local dev.
+YOUTUBE_COOKIES_FILE = os.getenv("YOUTUBE_COOKIES_FILE") or None
+
 # SAM2 checkpoint (downloaded separately - not bundled with the sam2 pip package;
 # see models/README.md). Config file path is relative to the sam2 package's bundled
 # configs/ directory (hydra-resolved), not a filesystem path.
