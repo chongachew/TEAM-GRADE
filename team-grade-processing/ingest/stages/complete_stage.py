@@ -6,6 +6,8 @@ Marks video processing as complete, logs summary statistics, and finalizes all d
 import logging
 from typing import Optional, Dict, Any
 
+import requests
+
 from config import settings
 from ingest.exceptions import (
     ValidationError,
@@ -16,6 +18,30 @@ from ingest.validation import VideoIdValidator
 from ingest.utils.firestore_utils import get_utc_timestamp
 
 logger = logging.getLogger(__name__)
+
+
+def _notify_film_ready(video_id: str, email: str) -> None:
+    """Fire-and-forget call into Bridge Athletics' Resend-backed email
+    capability - this project has no email infra of its own. Same isolation
+    principle as the reverse call (markTeamGradeVideoClaimed in
+    apps/api/src/routes/video.ts): a struggling Bridge Athletics must never
+    fail or delay the complete stage itself, so any failure here is only
+    logged, never raised.
+    """
+    if not settings.BRIDGE_API_BASE:
+        return
+    try:
+        headers = {}
+        if settings.TEAM_GRADE_WEBHOOK_SECRET:
+            headers["x-webhook-secret"] = settings.TEAM_GRADE_WEBHOOK_SECRET
+        requests.post(
+            f"{settings.BRIDGE_API_BASE}/api/v1/video/notify-film-ready",
+            json={"videoId": video_id, "email": email},
+            headers=headers,
+            timeout=5,
+        )
+    except Exception as e:
+        logger.warning(f"[{STAGE_NAME}] Film-ready notification failed (non-fatal): {e}")
 
 # Stage name constants (avoid circular import from ingest.stages.__init__)
 STAGE_NAME = "complete"
@@ -208,6 +234,10 @@ def run_complete_stage(
                         "reps_analyzed": reps_analyzed,
                     }
                 })
+
+                notify_email = final_data.get("notify_email")
+                if notify_email:
+                    _notify_film_ready(video_id_safe, notify_email)
             else:
                 logger.warning(f"[{STAGE_NAME}] Could not retrieve final document for logging", extra={
                     "video_id": video_id_safe,

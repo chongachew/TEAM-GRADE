@@ -265,6 +265,23 @@ RETENTION_HOURS = int(os.getenv("RETENTION_HOURS", "48"))
 # routes a completely anonymous visitor can call), not the whole API.
 INGEST_RATE_LIMIT = os.getenv("INGEST_RATE_LIMIT", "20/hour")
 
+# ============================================================================
+# EMAIL REMINDER (notify a visitor when their free-tool video finishes)
+# ============================================================================
+# Fire-and-forget call from complete_stage.py into Bridge Athletics' own
+# email-sending capability (Resend is already wired up there, this project
+# has no email infra of its own) - the reverse direction of
+# markTeamGradeVideoClaimed (apps/api/src/routes/video.ts), same isolation
+# principle: a struggling Bridge Athletics must never fail or delay this
+# stage's own completion. None (unset) disables the notification entirely.
+BRIDGE_API_BASE = os.getenv("BRIDGE_API_BASE") or None
+
+# Shared secret sent as the x-webhook-secret header on the notify-film-ready
+# call above - Bridge Athletics' route has no other auth on it (there's no
+# user account yet at this point in the funnel), so this is what stops the
+# endpoint being an open "send an email to any address" spam vector.
+TEAM_GRADE_WEBHOOK_SECRET = os.getenv("TEAM_GRADE_WEBHOOK_SECRET") or None
+
 # SAM2 checkpoint (downloaded separately - not bundled with the sam2 pip package;
 # see models/README.md). Config file path is relative to the sam2 package's bundled
 # configs/ directory (hydra-resolved), not a filesystem path.

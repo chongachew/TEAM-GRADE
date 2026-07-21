@@ -79,6 +79,11 @@ videos = Table(
     # NULL means "never claimed" - the retention sweep only ever purges
     # videos where this is still NULL past the retention window.
     Column("claimed_at", TIMESTAMP(timezone=True)),
+    # Set by POST /api/videos/{video_id}/notify-email. NULL means no
+    # reminder was requested. Read once by complete_stage.py to fire a
+    # one-off "your film is ready" notification, then left as-is (not
+    # cleared) - it's a fire-once trigger, not a subscription.
+    Column("notify_email", Text),
     Column("created_at", TIMESTAMP(timezone=True)),
     Column("updated_at", TIMESTAMP(timezone=True)),
     Column("completed_at", TIMESTAMP(timezone=True)),

@@ -5,6 +5,7 @@ Provides REST API layer for the YouTube ingestion worker system.
 
 import logging
 import os
+import re
 import secrets
 import sys
 import subprocess
@@ -305,6 +306,11 @@ class RepCorrectionRequest(BaseModel):
     rep_index: int
     start_frame: int
     end_frame: int
+
+
+class NotifyEmailRequest(BaseModel):
+    """Request model for POST /api/videos/{video_id}/notify-email."""
+    email: str
 
 
 # ============================================================================
@@ -1423,6 +1429,46 @@ async def mark_video_claimed(video_id: str) -> Dict[str, Any]:
     })
     logger.info(f"[OK] Marked video {safe_video_id} as claimed")
     return {"video_id": safe_video_id, "claimed": True}
+
+
+# Deliberately simple (not the RFC-5322 grammar) - this only gates against
+# obvious junk before storing the address; the real deliverability check
+# happens for free when Resend actually tries to send to it.
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+@app.post("/api/videos/{video_id}/notify-email")
+async def set_notify_email(video_id: str, body: NotifyEmailRequest) -> Dict[str, Any]:
+    """
+    Called from the-bridge.app's /watch/{video_id} page while a video is
+    still processing - lets a visitor leave an email instead of babysitting
+    the progress bar. complete_stage.py reads this field once, when the
+    pipeline actually finishes, and fires a one-off notification via Bridge
+    Athletics (see settings.BRIDGE_API_BASE). Idempotent - calling again just
+    overwrites the address.
+    """
+    try:
+        safe_video_id = settings.sanitize_id(video_id)
+    except (ValueError, ImportError) as e:
+        logger.warning(f"Invalid video_id format: {e}")
+        raise HTTPException(status_code=400, detail="Invalid video_id format")
+
+    email = body.email.strip()
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="Invalid email address")
+
+    if not firestore_client:
+        raise HTTPException(status_code=503, detail="Firestore client not available")
+
+    video_data = firestore_client.get_video_status(safe_video_id)
+    if not video_data:
+        raise HTTPException(status_code=404, detail=f"Video {safe_video_id} not found")
+
+    firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(safe_video_id).update({
+        "notify_email": email,
+    })
+    logger.info(f"[OK] Set notify_email for video {safe_video_id}")
+    return {"video_id": safe_video_id, "notify_email_set": True}
 
 
 @app.get("/api/reps/{video_id}/clip")
