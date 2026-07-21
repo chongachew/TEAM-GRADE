@@ -34,9 +34,13 @@ jobs:
       working-directory: ./team-grade-processing
       # See python-tests.yml: "../requirements.txt" resolved to the wrong
       # (repo-root) file; fixed to install this directory's own requirements.
+      # --extra-index-url matches the Dockerfile's own CPU-only pin - without
+      # it pip resolves the default CUDA torch wheels (~2GB+ of nvidia-*
+      # packages), which fills the runner's disk (`No space left on device`)
+      # before this pure py_compile sanity check ever needs a GPU at all.
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
         python -m py_compile api/server.py
         python -m py_compile ingest/ingest_pipeline_worker.py
 
