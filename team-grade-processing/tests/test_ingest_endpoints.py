@@ -26,7 +26,7 @@ class TestIngestVideoEndpoint:
                 {"video_exists": False, "queue_exists": False, "status": None, "stage": None, "error": None},
                 {"video_exists": True, "queue_exists": True, "status": "pending", "stage": "metadata", "error": None},
             ]
-            mock_worker.ingest_youtube_url.return_value = None
+            mock_worker.ingest_youtube_url.return_value = {"success": True, "message": "Queued", "video_id": mock_meta.get_video_id.return_value}
 
             response = client.post("/api/ingest", json={
                 "video_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -71,7 +71,7 @@ class TestIngestVideoEndpoint:
                 {"video_exists": False, "queue_exists": False, "status": None, "stage": None, "error": None},
                 {"video_exists": True, "queue_exists": True, "status": "pending", "stage": "metadata", "error": None},
             ]
-            mock_worker.ingest_youtube_url.return_value = None
+            mock_worker.ingest_youtube_url.return_value = {"success": True, "message": "Queued", "video_id": mock_meta.get_video_id.return_value}
 
             response = client.post("/api/ingest", json={
                 "video_url": "https://vimeo.com/123456789",
@@ -137,7 +137,7 @@ class TestIngestVideoEndpoint:
                 {"video_exists": True, "queue_exists": False, "status": "pending", "stage": "metadata", "error": None},
                 {"video_exists": True, "queue_exists": True, "status": "pending", "stage": "metadata", "error": None},
             ]
-            mock_worker.ingest_youtube_url.return_value = None
+            mock_worker.ingest_youtube_url.return_value = {"success": True, "message": "Queued", "video_id": mock_meta.get_video_id.return_value}
 
             response = client.post("/api/ingest", json={
                 "video_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -145,6 +145,46 @@ class TestIngestVideoEndpoint:
 
             assert response.status_code == 200
             assert response.json()["status"] == "recovery_enqueue"
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_ingest_retries_a_previously_failed_video(self, client):
+        """A video whose only prior attempt ended in 'failed' must actually
+        get re-enqueued - there was no decision-tree branch for this status
+        at all (fell through to the True default, response claimed success),
+        and ingest_youtube_url's own internal existence check (bails out on
+        ANY prior video row, not just completed ones) was silently trusted
+        without checking its return value, so nothing was ever actually
+        re-enqueued despite the API reporting success."""
+        with patch("api.server.metadata_extractor") as mock_meta, \
+             patch("api.server.firestore_client") as mock_fs, \
+             patch("api.server.ingest_worker") as mock_worker, \
+             patch("api.server.queue_manager") as mock_queue:
+            mock_meta.validate_youtube_url.return_value = True
+            mock_meta.get_video_id.return_value = "dQw4w9WgXcQ"
+            mock_fs.check_queue_integrity.side_effect = [
+                {"video_exists": True, "queue_exists": False, "status": "failed", "stage": "download", "error": "DOWNLOAD_FAILED"},
+                {"video_exists": True, "queue_exists": True, "status": "pending", "stage": "metadata", "error": None},
+            ]
+            # This is the real shape of a "soft failure" - no exception,
+            # just success: False - which the primary path must now honor
+            # instead of discarding.
+            mock_worker.ingest_youtube_url.return_value = {
+                "success": False, "message": "Video already ingested", "video_id": "dQw4w9WgXcQ",
+            }
+            mock_fs.save_video_metadata.return_value = True
+            mock_queue.enqueue_video.return_value = True
+
+            response = client.post("/api/ingest", json={
+                "video_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            })
+
+            assert response.status_code == 200
+            assert response.json()["status"] == "retry_enqueue"
+            # The real proof: the fallback path actually ran and re-enqueued -
+            # not just that the response looked successful.
+            mock_fs.save_video_metadata.assert_called_once()
+            mock_queue.enqueue_video.assert_called_once()
 
     @pytest.mark.endpoints
     @pytest.mark.integration

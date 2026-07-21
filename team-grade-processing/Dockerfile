@@ -45,6 +45,17 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN mkdir -p models && curl -L -o models/sam2.1_hiera_tiny.pt \
     https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt
 
+# Deno - yt-dlp needs a JS runtime to solve YouTube's signature/n-challenge
+# obfuscation on current extractions; without one, downloads fail with
+# "Signature solving failed... Requested format is not available" even with
+# valid cookies (cookies fix the separate bot-check block, not this). Its own
+# layer, not merged into the apt-get block above, so the pip install layer
+# stays cached on rebuild.
+RUN apt-get update && apt-get install -y --no-install-recommends unzip \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
+ENV PATH="/usr/local/bin:${PATH}"
+
 COPY . .
 
 RUN chmod +x docker-entrypoint.sh

@@ -470,7 +470,21 @@ async def ingest_video(request: Request, body: IngestRequest) -> IngestResponse:
                     response_status = "recovery_enqueue"
                     response_message = "Video stuck in pending - recovery enqueue"
                     logger.warning(f"[WARN] Recovery enqueue: pending but no queue entry exists")
-                    
+
+                elif video_exists and current_status == VideoStatus.FAILED.value:
+                    # Previously had no branch at all for this - fell through to
+                    # should_enqueue's True default, but ingest_worker's own
+                    # existence check below bails out on ANY existing video row
+                    # regardless of status, silently no-opping a "retry" with no
+                    # error surfaced. Explicit branch here documents the intent
+                    # (retry is allowed) so it's not accidentally lost again; the
+                    # actual fix is at the ingest_worker call site not trusting a
+                    # bare "no exception raised" as success.
+                    should_enqueue = True
+                    response_status = "retry_enqueue"
+                    response_message = "Video previously failed - retrying"
+                    logger.info(f"[OK] Retry enqueue: previous attempt failed")
+
                 elif not video_exists:
                     should_enqueue = True
                     response_status = "queued"
@@ -490,7 +504,19 @@ async def ingest_video(request: Request, body: IngestRequest) -> IngestResponse:
             if ingest_worker:
                 logger.info(f"[PRIMARY] Using IngestWorker for {video_id}")
                 try:
-                    ingest_worker.ingest_youtube_url(url)
+                    # ingest_youtube_url returns a result dict rather than
+                    # raising on a "soft" failure (e.g. its own internal
+                    # existence check bails out on ANY prior video row,
+                    # completed or failed) - this used to be discarded
+                    # entirely, so a previously-failed video's retry request
+                    # would silently no-op here while still reporting success
+                    # below, with nothing ever actually re-enqueued.
+                    primary_result = ingest_worker.ingest_youtube_url(url)
+                    if not primary_result or not primary_result.get("success"):
+                        raise RuntimeError(
+                            primary_result.get("message", "IngestWorker reported failure")
+                            if primary_result else "IngestWorker returned no result"
+                        )
                     logger.info(f"[OK] IngestWorker successfully handled {video_id}")
                     ingestion_success = True
                 except Exception as worker_e:
