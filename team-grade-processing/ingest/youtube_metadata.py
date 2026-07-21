@@ -372,6 +372,9 @@ class YouTubeMetadataExtractor:
                 "quiet": True,
                 "no_warnings": True,
                 "extract_flat": False,
+                # See youtube_downloader.py's ydl_opts - Deno needs this to
+                # actually have a challenge-solver script to run.
+                "remote_components": ["ejs:github"],
             }
             from config import settings
             if settings.YOUTUBE_COOKIES_FILE:

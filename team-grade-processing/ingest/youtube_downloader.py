@@ -104,6 +104,14 @@ class YouTubeDownloader:
             "progress_hooks": [self._progress_hook],
             "socket_timeout": 30,
             "retries": max_retries,
+            # Deno alone isn't enough to solve YouTube's signature/n-challenge:
+            # yt-dlp 2026.07.04+ only downloads the actual challenge-solver
+            # script (EJS) when explicitly allowed to fetch a remote component -
+            # without this, Deno has nothing to execute and every format is
+            # reported unavailable ("Signature solving failed... Ensure you
+            # have a supported JavaScript runtime AND challenge solver script
+            # distribution installed").
+            "remote_components": ["ejs:github"],
         }
 
         # YouTube's bot-check ("Sign in to confirm you're not a bot") blocks
@@ -197,6 +205,9 @@ class YouTubeDownloader:
                 "quiet": True,
                 "no_warnings": True,
                 "extract_flat": False,
+                # See the download() ydl_opts above - required for Deno to
+                # actually have a challenge-solver script to run.
+                "remote_components": ["ejs:github"],
             }
             from config import settings
             if settings.YOUTUBE_COOKIES_FILE:
