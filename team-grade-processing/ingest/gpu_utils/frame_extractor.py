@@ -228,37 +228,7 @@ class GPUFrameExtractor(BaseFrameExtractor):
             frame_skip = max(1, int(video_fps / fps)) if fps < video_fps else 1
             
             frames_metadata = []
-            frames_to_write = []
-            
-            # Sample frames at target FPS
-            for frame_index in range(0, total_frames, frame_skip):
-                if max_frames and len(frames_metadata) >= max_frames:
-                    break
-                
-                frame_count = len(frames_metadata)
-                frame_filename = f"frame_{frame_count:06d}.jpg"
-                frame_path = output_dir / frame_filename
-                
-                timestamp_seconds = frame_index / video_fps
-                
-                # Move frame to CPU and convert to uint8 for saving
-                frame_np = video_frames[frame_index].cpu().numpy().astype('uint8')
-                
-                frames_metadata.append({
-                    "frame_index": frame_count,
-                    "timestamp_seconds": timestamp_seconds,
-                    "path": str(frame_path),
-                    "width": video_width,
-                    "height": video_height,
-                })
-                
-                frames_to_write.append((frame_np, str(frame_path)))
-                
-                if frame_count % 50 == 0:
-                    logger.debug(f"[GPU Extractor] Sampled {frame_count} frames")
-            
-            logger.info(f"[GPU Extractor] Writing {len(frames_to_write)} frames to disk...")
-            
+
             # Write frames in parallel (CPU task, not GPU-bound)
             def write_frame_file(frame_data_tuple):
                 import cv2
@@ -269,10 +239,45 @@ class GPUFrameExtractor(BaseFrameExtractor):
                 except Exception as e:
                     logger.warning(f"[GPU Extractor] Failed to save frame {frame_path}: {e}")
                     return False, frame_path
-            
+
+            # Submitted per-frame as sampled rather than collected into a list
+            # first - see CPUFrameExtractor's extract_frames for why (same
+            # fix, same OOM this caused). NOTE: read_video() above still
+            # decodes the entire video into one tensor up front regardless -
+            # a deeper issue than this loop, left alone since this path only
+            # ever runs with prefer_gpu=True, which nothing in production
+            # resolves to true today (no GPU-capable Fargate task exists).
             successful_writes = 0
             with ThreadPoolExecutor(max_workers=4) as executor:
-                futures = [executor.submit(write_frame_file, ft) for ft in frames_to_write]
+                futures = []
+                for frame_index in range(0, total_frames, frame_skip):
+                    if max_frames and len(frames_metadata) >= max_frames:
+                        break
+
+                    frame_count = len(frames_metadata)
+                    frame_filename = f"frame_{frame_count:06d}.jpg"
+                    frame_path = output_dir / frame_filename
+
+                    timestamp_seconds = frame_index / video_fps
+
+                    # Move frame to CPU and convert to uint8 for saving
+                    frame_np = video_frames[frame_index].cpu().numpy().astype('uint8')
+
+                    frames_metadata.append({
+                        "frame_index": frame_count,
+                        "timestamp_seconds": timestamp_seconds,
+                        "path": str(frame_path),
+                        "width": video_width,
+                        "height": video_height,
+                    })
+
+                    futures.append(executor.submit(write_frame_file, (frame_np, str(frame_path))))
+
+                    if frame_count % 50 == 0:
+                        logger.debug(f"[GPU Extractor] Sampled {frame_count} frames")
+
+                logger.info(f"[GPU Extractor] Writing {len(futures)} frames to disk...")
+
                 for future in as_completed(futures):
                     try:
                         success, _ = future.result()
@@ -361,57 +366,13 @@ class CPUFrameExtractor(BaseFrameExtractor):
             
             # Calculate frame sampling interval
             frame_skip_interval = max(1, int(video_fps / fps)) if fps < video_fps else 1
-            
+
             frames_metadata = []
-            frames_to_write = []
             frame_count = 0
             frame_index = 0
             consecutive_failures = 0
             max_consecutive_failures = 10
-            
-            while True:
-                ret, frame = cap.read()
-                
-                if not ret or frame is None:
-                    consecutive_failures += 1
-                    if consecutive_failures >= max_consecutive_failures:
-                        logger.debug(f"[CPU Extractor] End of video reached")
-                        break
-                    frame_index += 1
-                    continue
-                
-                consecutive_failures = 0
-                
-                # Sample frames at target FPS
-                if frame_index % frame_skip_interval == 0:
-                    if max_frames and frame_count >= max_frames:
-                        break
-                    
-                    frame_filename = f"frame_{frame_count:06d}.jpg"
-                    frame_path = output_dir / frame_filename
-                    
-                    timestamp_seconds = frame_index / video_fps
-                    
-                    frames_metadata.append({
-                        "frame_index": frame_count,
-                        "timestamp_seconds": timestamp_seconds,
-                        "path": str(frame_path),
-                        "width": frame_width,
-                        "height": frame_height,
-                    })
-                    
-                    frames_to_write.append((frame, str(frame_path)))
-                    frame_count += 1
-                    
-                    if frame_count % 50 == 0:
-                        logger.debug(f"[CPU Extractor] Sampled {frame_count} frames")
-                
-                frame_index += 1
-            
-            cap.release()
-            
-            logger.info(f"[CPU Extractor] Writing {len(frames_to_write)} frames to disk...")
-            
+
             # Write frames in parallel
             def write_frame_file(frame_data_tuple):
                 frame_data, frame_path = frame_data_tuple
@@ -421,10 +382,63 @@ class CPUFrameExtractor(BaseFrameExtractor):
                 except Exception as e:
                     logger.warning(f"[CPU Extractor] Failed to save frame {frame_path}: {e}")
                     return False, frame_path
-            
+
+            # Frames are submitted to the write pool as soon as each is
+            # decoded, not collected into a list first - previously every
+            # sampled frame (full-resolution numpy array) was held in memory
+            # for the entire video before any disk write began, which OOM-
+            # killed the worker (2GB container) partway through an average-
+            # length video: ~3800 frames at 15fps for a 4-minute video, each
+            # several MB, adds up to 10GB+ held simultaneously. Submitting
+            # per-frame keeps only a small in-flight window (bounded by
+            # max_workers) in memory at once.
             successful_writes = 0
             with ThreadPoolExecutor(max_workers=4) as executor:
-                futures = [executor.submit(write_frame_file, ft) for ft in frames_to_write]
+                futures = []
+
+                while True:
+                    ret, frame = cap.read()
+
+                    if not ret or frame is None:
+                        consecutive_failures += 1
+                        if consecutive_failures >= max_consecutive_failures:
+                            logger.debug(f"[CPU Extractor] End of video reached")
+                            break
+                        frame_index += 1
+                        continue
+
+                    consecutive_failures = 0
+
+                    # Sample frames at target FPS
+                    if frame_index % frame_skip_interval == 0:
+                        if max_frames and frame_count >= max_frames:
+                            break
+
+                        frame_filename = f"frame_{frame_count:06d}.jpg"
+                        frame_path = output_dir / frame_filename
+
+                        timestamp_seconds = frame_index / video_fps
+
+                        frames_metadata.append({
+                            "frame_index": frame_count,
+                            "timestamp_seconds": timestamp_seconds,
+                            "path": str(frame_path),
+                            "width": frame_width,
+                            "height": frame_height,
+                        })
+
+                        futures.append(executor.submit(write_frame_file, (frame, str(frame_path))))
+                        frame_count += 1
+
+                        if frame_count % 50 == 0:
+                            logger.debug(f"[CPU Extractor] Sampled {frame_count} frames")
+
+                    frame_index += 1
+
+                cap.release()
+
+                logger.info(f"[CPU Extractor] Writing {len(futures)} frames to disk...")
+
                 for future in as_completed(futures):
                     try:
                         success, _ = future.result()
@@ -432,12 +446,12 @@ class CPUFrameExtractor(BaseFrameExtractor):
                             successful_writes += 1
                     except Exception as e:
                         logger.error(f"[CPU Extractor] Frame writing error: {e}")
-            
+
             logger.info(
                 f"[CPU Extractor] Extraction complete: {successful_writes} frames "
                 f"extracted and written"
             )
-            
+
             return len(frames_metadata), frames_metadata
         
         except Exception as e:
