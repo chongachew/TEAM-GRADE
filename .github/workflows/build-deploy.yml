@@ -127,6 +127,25 @@ jobs:
             ${{ env.ECR_REGISTRY }}/team-grade-web:latest
           build-args: |
             REACT_APP_API_BASE=https://film-api.the-bridge.app
+
+      # AWS Batch's job definition references this image as :latest (no
+      # revision-pinned digest), so pushing a new :latest here is all the
+      # next submitted detection/tracking job needs to pick it up - no
+      # ECS-style service/deployment step applies to Batch. This was
+      # previously a manual-only build, discovered stale in production
+      # 2026-07-22 (a real code fix had been pushed but never reached this
+      # image) - now kept in sync automatically like the other three.
+      - name: Build & push GPU Worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./team-grade-processing
+          file: ./team-grade-processing/Dockerfile.gpu
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/team-grade-worker-gpu:${{ github.sha }}
+            ${{ env.ECR_REGISTRY }}/team-grade-worker-gpu:latest
+          cache-from: type=gha,scope=team-grade-worker-gpu
+          cache-to: type=gha,mode=max,scope=team-grade-worker-gpu
           cache-from: type=gha,scope=team-grade-web
           cache-to: type=gha,mode=max,scope=team-grade-web
 
