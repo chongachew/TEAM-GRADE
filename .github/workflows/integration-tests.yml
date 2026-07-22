@@ -11,17 +11,6 @@ on:
 jobs:
   integration-test:
     runs-on: ubuntu-latest
-    
-    services:
-      firestore-emulator:
-        image: google/cloud-datastore-emulator:latest
-        ports:
-          - 8081:8081
-        options: |
-          --health-cmd "curl -s http://localhost:8081/status || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
     - uses: actions/checkout@v4
@@ -41,11 +30,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
-        pip install pytest pytest-cov firebase-admin
-
-    - name: Set Firestore Emulator
-      run: |
-        echo "FIRESTORE_EMULATOR_HOST=localhost:8081" >> $GITHUB_ENV
+        pip install pytest pytest-cov
 
     - name: Run Integration Tests
       working-directory: ./team-grade-processing
@@ -56,23 +41,8 @@ jobs:
       working-directory: ./team-grade-processing
       run: |
         python -m pip install requests
-        FIRESTORE_EMULATOR_HOST=localhost:8081 uvicorn api.server:app --port 8000 &
+        uvicorn api.server:app --port 8000 &
         SERVER_PID=$!
         sleep 5
         curl -sf http://localhost:8000/api/health
         kill $SERVER_PID
-
-    - name: Test Firestore emulator connection
-      # NOTE: the embedded Python lines below must stay indented at least as
-      # much as this comment - unindented (column-1) lines break out of the
-      # YAML block scalar entirely, which made this whole file invalid YAML
-      # (confirmed: fails to parse even before any of this session's changes).
-      run: |
-        python -c "
-        import os
-        os.environ['FIRESTORE_EMULATOR_HOST'] = 'localhost:8081'
-        from google.cloud import firestore
-        db = firestore.Client(project='test-project')
-        list(db.collection('_healthcheck').limit(1).stream())
-        print('Firestore emulator connection OK')
-        "
