@@ -5,8 +5,10 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
-  schedule:
-    - cron: '0 2 * * *'  # Run daily at 2 AM UTC
+  workflow_dispatch:
+  # Nightly cron removed 2026-07-22 - a fixed daily cost regardless of actual
+  # push activity, cut while trimming Actions-minute usage. Run manually
+  # (workflow_dispatch, above) if a periodic check is ever needed again.
 
 jobs:
   integration-test:

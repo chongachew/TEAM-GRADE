@@ -16,22 +16,21 @@ on:
 
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        # 3.9 dropped: sam2/rfdetr/torch/torchvision (multi-player tracking
-        # pipeline deps) all declare Requires-Python >= 3.10.
-        python-version: ['3.10', '3.11', '3.12']
-      fail-fast: false
+    runs-on: ubuntu-latest
+    # Was a 3 OS x 3 Python-version matrix (9 jobs) - trimmed to match what
+    # production actually runs (team-grade-processing/Dockerfile: python:3.11-slim
+    # on Linux; nothing here ever deploys to Windows/macOS). GitHub bills
+    # macOS runners at 10x and Windows at 2x the Linux-minute rate, so the
+    # cross-platform coverage was costing far more than it was worth for a
+    # service that only ever runs in a Linux container.
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: '3.11'
         cache: 'pip'
 
     - name: Install dependencies

@@ -18,20 +18,19 @@ on:
 
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: ['16.x', '18.x', '20.x']
-      fail-fast: false
+    runs-on: ubuntu-latest
+    # Was a 3 OS x 3 Node-version matrix (9 jobs) - trimmed to match what
+    # build-deploy.yml actually builds with (Node 20.x on Linux; the frontend
+    # is only ever built inside a Linux Docker image for deployment). GitHub
+    # bills macOS runners at 10x and Windows at 2x the Linux-minute rate.
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Use Node.js ${{ matrix.node-version }}
+    - name: Use Node.js
       uses: actions/setup-node@v3
       with:
-        node-version: ${{ matrix.node-version }}
+        node-version: '20.x'
         cache: 'npm'
 
     - name: Install dependencies
