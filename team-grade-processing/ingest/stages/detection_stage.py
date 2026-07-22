@@ -110,6 +110,7 @@ def run_detection_stage(
         })
 
         import cv2
+        import torch
 
         frames_dir = settings.get_frames_dir(video_id_safe)
         # Defensive guard: normally already-local (same worker process as
@@ -168,7 +169,14 @@ def run_detection_stage(
                 if not images:
                     continue
 
-                results = model.predict(images, threshold=settings.DETECTION_CONFIDENCE_THRESHOLD)
+                # no_grad: this is inference-only, but without it RF-DETR's forward
+                # pass still builds an autograd graph for every batch - each one
+                # holding its own set of GPU-resident intermediate tensors (worse
+                # for the "-seg" variants, whose mask branch has much bigger
+                # intermediates than plain box detection) that only gets freed once
+                # nothing references that graph anymore.
+                with torch.no_grad():
+                    results = model.predict(images, threshold=settings.DETECTION_CONFIDENCE_THRESHOLD)
                 if not isinstance(results, list):
                     results = [results]
 
@@ -189,6 +197,16 @@ def run_detection_stage(
                             "created_at": get_utc_timestamp(),
                         })
                         det_idx += 1
+
+                # Every detection doc above was already pulled out as plain floats,
+                # so nothing here still needs these GPU tensors - drop the reference
+                # and hand the freed blocks back to the allocator now rather than
+                # letting them sit until the next batch's reassignment gets around
+                # to it. Across ~2,000 batches for a full-length video this is what
+                # was slowly filling the GPU until it OOM'd partway through.
+                del results
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
                 if (batch_start // batch_size) % 5 == 0:
                     logger.info(f"[{STAGE_NAME}] Progress", extra={
