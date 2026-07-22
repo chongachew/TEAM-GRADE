@@ -193,6 +193,11 @@ MOTION_COMPENSATION_MAX_CORNERS = 200  # goodFeaturesToTrack maxCorners
 MOTION_COMPENSATION_RANSAC_REPROJ_THRESHOLD = 3.0  # findHomography RANSAC threshold (px)
 MOTION_COMPENSATION_MIN_INLIER_RATIO = float(os.getenv("MOTION_COMPENSATION_MIN_INLIER_RATIO", 0.3))
 # Below this inlier ratio, fall back to identity homography for that frame (likely a scene cut).
+MOTION_COMPENSATION_MAX_WORKERS = int(os.getenv("MOTION_COMPENSATION_MAX_WORKERS", 4))
+# Thread-pool size for per-frame-pair homography estimation. Each frame pair's
+# estimate is independent, so this should track the container's actual allocated
+# vCPUs (set explicitly via env var, not auto-detected - os.cpu_count() reflects
+# the underlying host under Fargate's CPU-quota model, not the task's own quota).
 
 # ============================================================================
 # DETECTION SETTINGS (RF-DETR)

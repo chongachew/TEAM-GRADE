@@ -17,6 +17,7 @@ evaluate against.
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -27,6 +28,14 @@ from config import settings
 from ingest.utils.firestore_utils import get_utc_timestamp
 
 logger = logging.getLogger(__name__)
+
+# OpenCV's Python bindings release the GIL for the duration of each C++ call, so a
+# thread pool over independent frame pairs (below) gives real parallelism without
+# multiprocessing's IPC/serialization overhead. Cap OpenCV's own internal thread
+# pool to 1 so it doesn't also try to parallelize each individual call - letting
+# the outer ThreadPoolExecutor own the container's vCPUs instead of contending
+# with OpenCV's own parallel_for backend.
+cv2.setNumThreads(1)
 
 
 def _identity_doc(frame_index: int, homography_to_ref: np.ndarray) -> Dict[str, Any]:
@@ -139,11 +148,39 @@ def estimate_homography(
     }
 
 
+def _read_gray(path: Path) -> Optional[np.ndarray]:
+    frame = cv2.imread(str(path))
+    if frame is None:
+        return None
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+
+def _compute_pair_motion(
+    args: Tuple[int, Path, Path, int, float]
+) -> Tuple[int, Optional[Dict[str, Any]]]:
+    """Worker: estimate frame `idx`'s homography relative to frame `idx - 1`.
+
+    Each pair is fully independent of every other pair, so this can run in any
+    order/thread. Returns (idx, None) if either frame fails to decode - the
+    caller falls back to identity for that frame, matching what the original
+    sequential loop did whenever it hit an unreadable frame (its own, or the
+    one immediately before it).
+    """
+    idx, prev_path, curr_path, max_corners, ransac_reproj_threshold = args
+    prev_gray = _read_gray(prev_path)
+    curr_gray = _read_gray(curr_path)
+    if prev_gray is None or curr_gray is None:
+        logger.debug(f"[motion_compensation] Unreadable frame in pair ending at index {idx}")
+        return idx, None
+    return idx, estimate_homography(prev_gray, curr_gray, max_corners, ransac_reproj_threshold)
+
+
 def compute_camera_motion_sequence(
     frame_paths: List[Path],
     max_corners: Optional[int] = None,
     ransac_reproj_threshold: Optional[float] = None,
     min_inlier_ratio: Optional[float] = None,
+    max_workers: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Compute per-frame camera-motion docs for an ordered sequence of frame images.
 
@@ -155,6 +192,10 @@ def compute_camera_motion_sequence(
     extreme motion blur), an identity transform is substituted for that frame rather
     than propagating a garbage transform into the cumulative chain, and the doc is
     flagged low_confidence=True.
+
+    Per-pair homography estimation (the expensive KLT+RANSAC work) is farmed out
+    across a thread pool since each pair is independent; only the cheap cumulative
+    homography_to_ref accumulation below is inherently sequential.
 
     Returns:
         List of per-frame dicts matching the videos/{id}/camera_motion/{frame_index} schema.
@@ -168,27 +209,32 @@ def compute_camera_motion_sequence(
     min_inlier_ratio = (
         min_inlier_ratio if min_inlier_ratio is not None else settings.MOTION_COMPENSATION_MIN_INLIER_RATIO
     )
+    max_workers = max_workers if max_workers is not None else settings.MOTION_COMPENSATION_MAX_WORKERS
+
+    n = len(frame_paths)
+    if n == 0:
+        return []
+
+    pair_results: Dict[int, Optional[Dict[str, Any]]] = {}
+    if n > 1:
+        tasks = [
+            (idx, frame_paths[idx - 1], frame_paths[idx], max_corners, ransac_reproj_threshold)
+            for idx in range(1, n)
+        ]
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            for idx, motion in pool.map(_compute_pair_motion, tasks):
+                pair_results[idx] = motion
 
     docs: List[Dict[str, Any]] = []
     homography_to_ref = np.eye(3)
-    prev_gray: Optional[np.ndarray] = None
+    docs.append(_identity_doc(0, homography_to_ref))
 
-    for idx, path in enumerate(frame_paths):
-        frame = cv2.imread(str(path))
-        if frame is None:
-            logger.debug(f"[motion_compensation] Unreadable frame, using identity: {path}")
+    for idx in range(1, n):
+        motion = pair_results.get(idx)
+        if motion is None:
             docs.append(_identity_doc(idx, homography_to_ref))
-            prev_gray = None
             continue
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        if prev_gray is None:
-            docs.append(_identity_doc(idx, homography_to_ref))
-            prev_gray = gray
-            continue
-
-        motion = estimate_homography(prev_gray, gray, max_corners, ransac_reproj_threshold)
         low_confidence = motion["inlier_ratio"] < min_inlier_ratio
         H_to_prev = (
             np.eye(3) if low_confidence else np.array(motion["homography_to_prev"]).reshape(3, 3)
@@ -211,8 +257,6 @@ def compute_camera_motion_sequence(
             "low_confidence": low_confidence,
             "created_at": get_utc_timestamp(),
         })
-
-        prev_gray = gray
 
     return docs
 

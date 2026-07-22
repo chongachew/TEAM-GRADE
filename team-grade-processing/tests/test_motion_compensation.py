@@ -2,11 +2,17 @@
 Tests for classical (KLT + RANSAC) camera-motion estimation.
 """
 
+from pathlib import Path
+
 import numpy as np
 import cv2
 import pytest
 
-from processing.motion_compensation import estimate_homography, decompose_homography_2d
+from processing.motion_compensation import (
+    estimate_homography,
+    decompose_homography_2d,
+    compute_camera_motion_sequence,
+)
 
 
 @pytest.fixture
@@ -68,3 +74,76 @@ def test_decompose_homography_identity_gives_zero_motion():
     assert ty == 0.0
     assert rotation_deg == pytest.approx(0.0, abs=0.01)
     assert scale == pytest.approx(1.0, abs=0.01)
+
+
+def _write_frames(tmp_path: Path, n: int, shift_per_frame: float = 4.0) -> list[Path]:
+    """Writes a sequence of frames, each translated slightly further from a shared
+    textured base image, simulating a slow camera pan across n frames."""
+    rng = np.random.default_rng(7)
+    base = rng.integers(0, 255, (240, 320), dtype=np.uint8)
+    base = cv2.GaussianBlur(base, (5, 5), 0)
+
+    paths = []
+    for i in range(n):
+        M = np.array([[1.0, 0.0, shift_per_frame * i], [0.0, 1.0, 0.0]])
+        frame = cv2.warpAffine(base, M, (320, 240))
+        path = tmp_path / f"frame_{i:05d}.jpg"
+        cv2.imwrite(str(path), frame)
+        paths.append(path)
+    return paths
+
+
+def test_compute_sequence_frame_zero_is_identity(tmp_path):
+    paths = _write_frames(tmp_path, 1)
+    docs = compute_camera_motion_sequence(paths)
+    assert len(docs) == 1
+    assert docs[0]["frame_index"] == 0
+    assert np.array_equal(np.array(docs[0]["homography_to_ref"]).reshape(3, 3), np.eye(3))
+
+
+def test_compute_sequence_accumulates_and_preserves_order(tmp_path):
+    paths = _write_frames(tmp_path, 5)
+    docs = compute_camera_motion_sequence(paths, max_workers=4)
+
+    assert [d["frame_index"] for d in docs] == [0, 1, 2, 3, 4]
+    # Cumulative translation magnitude should grow monotonically with a steady pan,
+    # consistently in one direction (the sign is a convention detail, not under test).
+    cumulative_tx = [
+        np.array(d["homography_to_ref"]).reshape(3, 3)[0, 2] for d in docs
+    ]
+    assert cumulative_tx[0] == pytest.approx(0.0)
+    magnitudes = [abs(v) for v in cumulative_tx]
+    assert magnitudes[-1] > magnitudes[1] > 0
+    assert len({np.sign(v) for v in cumulative_tx[1:]}) == 1
+
+
+def test_compute_sequence_matches_regardless_of_worker_count(tmp_path):
+    paths = _write_frames(tmp_path, 6)
+    docs_serial = compute_camera_motion_sequence(paths, max_workers=1)
+    docs_parallel = compute_camera_motion_sequence(paths, max_workers=4)
+
+    for serial, parallel in zip(docs_serial, docs_parallel):
+        assert serial["frame_index"] == parallel["frame_index"]
+        assert np.allclose(serial["homography_to_ref"], parallel["homography_to_ref"])
+        assert serial["inlier_ratio"] == pytest.approx(parallel["inlier_ratio"])
+
+
+def test_compute_sequence_unreadable_frame_falls_back_to_identity(tmp_path):
+    paths = _write_frames(tmp_path, 4)
+    missing = tmp_path / "frame_00002_missing.jpg"  # never written - cv2.imread -> None
+    paths[2] = missing
+
+    docs = compute_camera_motion_sequence(paths)
+
+    assert len(docs) == 4
+    # Frame 2 itself is unreadable -> identity.
+    assert np.array_equal(np.array(docs[2]["homography_to_prev"]).reshape(3, 3), np.eye(3))
+    # Frame 3's pair partner (frame 2) was unreadable -> identity too, matching the
+    # original sequential loop's "prev_gray reset" behavior.
+    assert np.array_equal(np.array(docs[3]["homography_to_prev"]).reshape(3, 3), np.eye(3))
+    # But it shouldn't have crashed or dropped a frame.
+    assert [d["frame_index"] for d in docs] == [0, 1, 2, 3]
+
+
+def test_compute_sequence_empty_input_returns_empty():
+    assert compute_camera_motion_sequence([]) == []
