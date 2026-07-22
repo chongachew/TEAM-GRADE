@@ -204,7 +204,14 @@ DETECTION_USE_GPU = os.getenv("DETECTION_USE_GPU", "false").lower() in ["true", 
 DETECTION_MODEL_SIZE = os.getenv("DETECTION_MODEL_SIZE", "medium")
 DETECTION_CONFIDENCE_THRESHOLD = float(os.getenv("DETECTION_CONFIDENCE_THRESHOLD", 0.5))
 DETECTION_CLASS_NAMES = ["person"]  # Phase 1: pretrained COCO "person" class, zero-shot
-DETECTION_BATCH_SIZE = 50
+# Confirmed live 2026-07-22: 50 frames/batch OOM'd the Batch job's CPU
+# allocator during mask postprocessing (RF-DETR Seg produces a per-pixel
+# mask per detection) - a single batch tried to allocate ~395MB in one
+# tensor. Also discovered alongside this: DETECTION_USE_GPU was never set
+# on the job definition, so this ran on CPU despite the GPU-provisioned
+# Batch instance - fixed there too, but this smaller batch size is kept
+# regardless as a real memory-pressure fix, not just a GPU workaround.
+DETECTION_BATCH_SIZE = int(os.getenv("DETECTION_BATCH_SIZE", 8))
 
 # ============================================================================
 # TRACKING SETTINGS (SAM2 + density-aware memory bank)
@@ -219,7 +226,7 @@ TRACKING_MEMORY_STATIC_IOU_THRESHOLD = 0.9  # skip memory-bank update if IoU vs 
 TRACKING_OCCLUDED_CONFIDENCE_THRESHOLD = 0.4  # below this confidence, treat detection as occluded
 TRACKING_MATCH_IOU_THRESHOLD = float(os.getenv("TRACKING_MATCH_IOU_THRESHOLD", 0.3))  # min IoU for frame-to-frame continuity match
 TRACKING_REID_SIMILARITY_THRESHOLD = float(os.getenv("TRACKING_REID_SIMILARITY_THRESHOLD", 0.7))  # min appearance similarity for long-gap re-association
-TRACKING_BATCH_SIZE = 100
+TRACKING_BATCH_SIZE = int(os.getenv("TRACKING_BATCH_SIZE", 20))
 REID_OCR_TRIGGER_GAP_FRAMES = int(os.getenv("REID_OCR_TRIGGER_GAP_FRAMES", 45))
 
 # ============================================================================
