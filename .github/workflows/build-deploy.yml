@@ -146,8 +146,6 @@ jobs:
             ${{ env.ECR_REGISTRY }}/team-grade-worker-gpu:latest
           cache-from: type=gha,scope=team-grade-worker-gpu
           cache-to: type=gha,mode=max,scope=team-grade-worker-gpu
-          cache-from: type=gha,scope=team-grade-web
-          cache-to: type=gha,mode=max,scope=team-grade-web
 
       - name: Deploy API to ECS
         run: |
