@@ -273,11 +273,17 @@ def run_pose_stage_lite(
                         # this frame's tracked boxes (see pose_track_matching.py)
                         # rather than one MediaPipe call per player.
                         pose_sets = pose_estimator.estimate_multi(frame)
+                        # estimate_multi() returns (landmarks_dict, confidence)
+                        # tuples; match_poses_to_tracks() operates on bare
+                        # landmarks dicts (it computes its own per-keypoint
+                        # bbox, not the whole-pose confidence estimate_multi
+                        # already gave us) - drop the confidence element here.
+                        landmark_sets = [landmarks for landmarks, _confidence in pose_sets]
                         frame_tracks = frame_tracks_by_index.get(idx, [])
                         matched = match_poses_to_tracks(
-                            pose_sets, frame_tracks, frame.shape,
+                            landmark_sets, frame_tracks, frame.shape,
                             iou_threshold=settings.POSE_TRACK_IOU_THRESHOLD
-                        ) if pose_sets and frame_tracks else []
+                        ) if landmark_sets and frame_tracks else []
 
                         for landmarks, track_id in matched:
                             confidences = [kp.get("confidence", 0.0) for kp in landmarks.values()]
