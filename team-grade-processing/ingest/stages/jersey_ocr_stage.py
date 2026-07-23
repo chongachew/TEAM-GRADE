@@ -43,7 +43,6 @@ def get_ocr_instance():
         _OCR_CACHE = JerseyOCR(
             ocr_engine=settings.OCR_ENGINE,
             language=settings.OCR_LANGUAGE,
-            gpu=True
         )
         logger.info(f"[{STAGE_NAME}] OCR model loaded and cached")
     
