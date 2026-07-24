@@ -271,12 +271,21 @@ class VectorizedTraitScorer:
     # ==================== Private Helper Methods ====================
     
     def _get_feature_names(self, reps_data: List[Dict[str, float]]) -> List[str]:
-        """Extract unique feature names from reps (maintain consistent order)."""
-        if not reps_data:
-            return []
-        
-        # Use first rep as reference for feature order
-        return list(reps_data[0].keys())
+        """Extract the union of feature names across every rep, not just the
+        first one. Using only reps_data[0] meant a single rep with no pose
+        data (an empty features dict - a real, common case since not every
+        track gets matched to pose data) collapsed feature_names to [], which
+        then silently zeroed the score matrix for EVERY rep in the batch, not
+        just the empty one - a real production bug (all reps scored 0.0/F on
+        a real video where most reps had perfectly good pose data)."""
+        names: List[str] = []
+        seen = set()
+        for rep in reps_data:
+            for feat in rep.keys():
+                if feat not in seen:
+                    seen.add(feat)
+                    names.append(feat)
+        return names
     
     def _reps_to_matrix(
         self, reps_data: List[Dict[str, float]], feature_names: List[str]
