@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Play Boundary Labeler</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; background: #14181c; color: #e8ecef; margin: 0; padding: 20px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: #8a96a3; font-size: 13px; margin-bottom: 16px; }
+  .setup { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .setup input { flex: 1; min-width: 240px; background: #1f2529; border: 1px solid #333c42; color: #e8ecef; padding: 8px 10px; border-radius: 6px; font-size: 13px; }
+  .setup button { background: #3b7dd8; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .setup button:hover { background: #2f68b8; }
+  .main { display: grid; grid-template-columns: 1fr 320px; gap: 16px; }
+  video { width: 100%; background: #000; border-radius: 8px; display: block; }
+  .controls { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+  .controls button { background: #262c31; border: 1px solid #3a4249; color: #e8ecef; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .controls button:hover { background: #323a41; }
+  .controls button.mark { background: #d84343; border-color: #d84343; font-weight: 600; }
+  .controls button.mark:hover { background: #b83636; }
+  .controls button.mark.editing { background: #2a8f5a; border-color: #2a8f5a; }
+  .time-display { font-variant-numeric: tabular-nums; font-size: 14px; background: #1f2529; padding: 6px 12px; border-radius: 6px; }
+  .speed-select { background: #262c31; border: 1px solid #3a4249; color: #e8ecef; padding: 6px 8px; border-radius: 6px; }
+
+  .timeline-wrap { margin-top: 16px; }
+  .timeline-label-row { display: flex; justify-content: space-between; font-size: 11px; color: #6b7680; margin-bottom: 4px; }
+  .timeline { position: relative; height: 46px; background: #1a1f23; border: 1px solid #2a3238; border-radius: 6px; cursor: crosshair; user-select: none; }
+  .timeline .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: #262c31; }
+  .timeline .tick-label { position: absolute; top: 2px; font-size: 9px; color: #4a545c; transform: translateX(2px); }
+  .marker { position: absolute; top: 6px; width: 14px; height: 34px; margin-left: -7px; cursor: grab; }
+  .marker .pin { width: 100%; height: 100%; background: #d8973c; border-radius: 3px; opacity: 0.85; border: 1px solid #00000040; }
+  .marker.reviewed .pin { background: #2a8f5a; }
+  .marker.selected .pin { background: #3b7dd8; opacity: 1; box-shadow: 0 0 0 2px #6ab0ff; }
+  .marker:active { cursor: grabbing; }
+  .marker .marker-label { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 9px; white-space: nowrap; color: #9aa4ad; pointer-events: none; }
+  .playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #ff5a5a; pointer-events: none; }
+  .hover-time { position: absolute; top: -20px; font-size: 10px; color: #8a96a3; pointer-events: none; background: #14181c; padding: 1px 4px; border-radius: 3px; }
+
+  .panel { background: #1a1f23; border: 1px solid #2a3238; border-radius: 8px; padding: 12px; max-height: 520px; overflow-y: auto; }
+  .panel h2 { font-size: 14px; margin: 0 0 10px; color: #b8c2cc; }
+  .label-list-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; border-radius: 6px; margin-bottom: 4px; font-size: 12px; background: #1f2529; }
+  .label-list-item.reviewed { border-left: 3px solid #2a8f5a; }
+  .label-list-item.selected { outline: 1px solid #3b7dd8; }
+  .label-list-item .del { background: none; border: none; color: #d84343; cursor: pointer; font-size: 14px; padding: 0 4px; }
+  .export-row { margin-top: 12px; display: flex; gap: 8px; }
+  .export-row button { flex: 1; background: #2a8f5a; border: none; color: white; padding: 8px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  .export-row button.clear { background: #4a2a2a; }
+  .hint { color: #6b7680; font-size: 11px; margin-top: 6px; line-height: 1.5; }
+  .video-meta { display: flex; gap: 8px; align-items: center; }
+  .video-meta input { width: 120px; }
+  .candidate-import { background: #1a1f23; border: 1px solid #2a3238; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+  .candidate-import h2 { font-size: 14px; margin: 0 0 6px; color: #b8c2cc; }
+  .candidate-import textarea { width: 100%; background: #1f2529; color: #e8ecef; border: 1px solid #333c42; border-radius: 6px; padding: 6px; font-size: 11px; box-sizing: border-box; }
+  .candidate-import .row { display: flex; gap: 8px; margin-top: 6px; }
+  .candidate-import button { background: #262c31; border: 1px solid #3a4249; color: #e8ecef; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  .stats { font-size: 11px; color: #8a96a3; }
+</style>
+</head>
+<body>
+
+<h1>Play Boundary Labeler</h1>
+<div class="sub">Frame-accurate manual ground-truth labeling for play-boundary signal validation. Nothing here is uploaded anywhere - labels live in this browser tab (and localStorage) until you export them.</div>
+
+<div class="setup">
+  <input id="videoUrl" placeholder="Paste presigned S3 video URL here (aws s3 presign s3://.../raw.mp4 --expires-in 43200)">
+  <div class="video-meta">
+    <span style="font-size:12px;color:#8a96a3;">video_id</span>
+    <input id="videoId" placeholder="e.g. kJM5Uk9DtoQ">
+  </div>
+  <div class="video-meta">
+    <span style="font-size:12px;color:#8a96a3;">fps</span>
+    <input id="fpsInput" value="15" type="number" style="width:60px;">
+  </div>
+  <button onclick="loadVideo()">Load</button>
+</div>
+
+<div class="candidate-import">
+  <h2>Import candidate signal (pre-seeds the timeline for you to correct/reject)</h2>
+  <div class="hint" style="margin-top:0;">
+    Paste one per line as <code>label,timestamp_seconds</code> (e.g. straight from play_boundary_validation.py's
+    "=== Candidate boundaries ===" output, reformatted). These load as <span style="color:#d8973c;">orange</span> markers on the
+    timeline below the video - drag one roughly into place, then click it, frame-step with <b>[</b>/<b>]</b> to find the
+    exact snap, and hit <b>Space</b> to snap it there (it turns <span style="color:#2a8f5a;">green</span> once reviewed). Delete a marker
+    (click to select, then <b>Delete</b> key) if it's a false positive. For plays with no marker at all, deselect
+    (<b>Escape</b>) and press <b>Space</b> at the real snap to add a brand-new one.
+  </div>
+  <textarea id="candidateInput" rows="4" placeholder="3rd&2,643&#10;4th&2,659&#10;3rd&5,661&#10;1st&10,688"></textarea>
+  <div class="row">
+    <button onclick="importCandidates()">Import as markers</button>
+    <span class="stats" id="importStats"></span>
+  </div>
+</div>
+
+<div class="main">
+  <div>
+    <video id="player" controls></video>
+    <div class="controls">
+      <button onclick="step(-10)">« 10f</button>
+      <button onclick="step(-1)">‹ 1f</button>
+      <button onclick="togglePlay()" id="playBtn">Play</button>
+      <button onclick="step(1)">1f ›</button>
+      <button onclick="step(10)">10f »</button>
+      <select class="speed-select" onchange="setSpeed(this.value)">
+        <option value="1">1x</option>
+        <option value="0.5">0.5x</option>
+        <option value="0.25">0.25x</option>
+        <option value="0.1">0.1x</option>
+      </select>
+      <span class="time-display" id="timeDisplay">0.00s (frame 0)</span>
+      <button class="mark" id="spaceBtn" onclick="spaceAction()">Add new marker (Space)</button>
+    </div>
+
+    <div class="timeline-wrap">
+      <div class="timeline-label-row"><span>Timeline (click empty area to seek, drag markers to reposition)</span><span id="selectedInfo"></span></div>
+      <div class="timeline" id="timeline"></div>
+    </div>
+
+    <div class="hint">
+      Keyboard: <b>Space</b> = add new marker at current time, or snap the <i>selected</i> marker to current time &middot;
+      <b>[</b>/<b>]</b> = step 1 frame &middot; <b>Shift+[</b>/<b>Shift+]</b> = step 10 frames &middot; <b>K</b> = play/pause &middot;
+      <b>Delete</b>/<b>Backspace</b> = remove selected marker &middot; <b>Escape</b> = deselect.
+    </div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h2>Labeled boundaries (<span id="labelCount">0</span>, <span id="reviewedCount">0</span> reviewed)</h2>
+      <div id="labelList"></div>
+      <div class="export-row">
+        <button onclick="exportJSON()">Export JSON</button>
+        <button class="clear" onclick="clearLabels()">Clear all</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let fps = 15;
+let labels = []; // {id, timestamp_seconds, source: 'candidate'|'manual', reviewed: bool, label: str}
+let videoId = "";
+let nextId = 1;
+let selectedId = null;
+let dragState = null; // {id, startX, timelineRect}
+
+function frameIndex(t) { return Math.round(t * fps); }
+
+function loadVideo() {
+  const url = document.getElementById('videoUrl').value.trim();
+  videoId = document.getElementById('videoId').value.trim() || "unknown_video";
+  fps = parseFloat(document.getElementById('fpsInput').value) || 15;
+  if (!url) { alert("Paste a presigned video URL first."); return; }
+  const v = document.getElementById('player');
+  v.src = url;
+  const storageKey = 'boundary_labels_' + videoId;
+  const saved = localStorage.getItem(storageKey);
+  labels = saved ? JSON.parse(saved) : [];
+  labels.forEach(l => { if (!l.id) l.id = nextId++; });
+  v.addEventListener('loadedmetadata', renderTimelineTicks, { once: true });
+  renderAll();
+}
+
+function step(frames) {
+  const v = document.getElementById('player');
+  v.currentTime = Math.max(0, v.currentTime + frames / fps);
+}
+
+function togglePlay() {
+  const v = document.getElementById('player');
+  if (v.paused) { v.play(); document.getElementById('playBtn').textContent = 'Pause'; }
+  else { v.pause(); document.getElementById('playBtn').textContent = 'Play'; }
+}
+
+function setSpeed(s) {
+  document.getElementById('player').playbackRate = parseFloat(s);
+}
+
+function persistLabels() {
+  if (!videoId) return;
+  localStorage.setItem('boundary_labels_' + videoId, JSON.stringify(labels));
+}
+
+function spaceAction() {
+  const v = document.getElementById('player');
+  const t = v.currentTime;
+  if (selectedId !== null) {
+    const l = labels.find(x => x.id === selectedId);
+    if (l) { l.timestamp_seconds = t; l.reviewed = true; }
+  } else {
+    const l = { id: nextId++, timestamp_seconds: t, source: 'manual', reviewed: true, label: 'manual' };
+    labels.push(l);
+    selectedId = l.id;
+  }
+  persistLabels();
+  renderAll();
+}
+
+function importCandidates() {
+  const raw = document.getElementById('candidateInput').value.trim();
+  if (!raw) return;
+  const rows = raw.split('\n').map(line => {
+    const parts = line.split(',');
+    return { label: parts[0]?.trim(), t: parseFloat(parts[1]) };
+  }).filter(r => r.label && !isNaN(r.t));
+  rows.forEach(r => {
+    labels.push({ id: nextId++, timestamp_seconds: r.t, source: 'candidate', reviewed: false, label: r.label });
+  });
+  labels.sort((a, b) => a.timestamp_seconds - b.timestamp_seconds);
+  persistLabels();
+  document.getElementById('importStats').textContent = `Imported ${rows.length} candidate markers.`;
+  renderAll();
+}
+
+function selectMarker(id) {
+  selectedId = id;
+  const l = labels.find(x => x.id === id);
+  if (l) document.getElementById('player').currentTime = l.timestamp_seconds;
+  renderAll();
+}
+
+function deselect() {
+  selectedId = null;
+  renderAll();
+}
+
+function removeSelected() {
+  if (selectedId === null) return;
+  labels = labels.filter(x => x.id !== selectedId);
+  selectedId = null;
+  persistLabels();
+  renderAll();
+}
+
+function clearLabels() {
+  if (!confirm('Clear all labeled boundaries for this video?')) return;
+  labels = [];
+  selectedId = null;
+  persistLabels();
+  renderAll();
+}
+
+function exportJSON() {
+  const out = labels.map(l => ({
+    video_id: videoId,
+    timestamp_seconds: l.timestamp_seconds,
+    frame_index: frameIndex(l.timestamp_seconds),
+    source: l.source,
+    reviewed: l.reviewed,
+    label: l.label,
+  }));
+  const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `ground_truth_${videoId}.json`;
+  a.click();
+}
+
+// ---- Timeline rendering ----
+
+function renderTimelineTicks() {
+  const v = document.getElementById('player');
+  const timeline = document.getElementById('timeline');
+  timeline.querySelectorAll('.tick, .tick-label').forEach(el => el.remove());
+  const duration = v.duration || 0;
+  if (!duration) return;
+  const step = duration > 600 ? 60 : duration > 120 ? 30 : 10;
+  for (let t = 0; t < duration; t += step) {
+    const pct = (t / duration) * 100;
+    const tick = document.createElement('div');
+    tick.className = 'tick';
+    tick.style.left = pct + '%';
+    timeline.appendChild(tick);
+    const lbl = document.createElement('div');
+    lbl.className = 'tick-label';
+    lbl.style.left = pct + '%';
+    lbl.textContent = fmtTime(t);
+    timeline.appendChild(lbl);
+  }
+}
+
+function fmtTime(t) {
+  const m = Math.floor(t / 60);
+  const s = Math.floor(t % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function renderAll() {
+  renderTimeline();
+  renderLabelList();
+}
+
+function renderTimeline() {
+  const v = document.getElementById('player');
+  const timeline = document.getElementById('timeline');
+  timeline.querySelectorAll('.marker, .playhead').forEach(el => el.remove());
+  const duration = v.duration || 1;
+
+  const playhead = document.createElement('div');
+  playhead.className = 'playhead';
+  playhead.style.left = ((v.currentTime / duration) * 100) + '%';
+  timeline.appendChild(playhead);
+
+  labels.forEach(l => {
+    const pct = (l.timestamp_seconds / duration) * 100;
+    const m = document.createElement('div');
+    m.className = 'marker' + (l.reviewed ? ' reviewed' : '') + (l.id === selectedId ? ' selected' : '');
+    m.style.left = pct + '%';
+    m.innerHTML = `<div class="pin"></div><div class="marker-label">${l.label || ''}</div>`;
+    m.addEventListener('mousedown', (e) => startDrag(e, l.id));
+    timeline.appendChild(m);
+  });
+  document.getElementById('selectedInfo').textContent = selectedId !== null
+    ? `Selected: ${labels.find(x => x.id === selectedId)?.timestamp_seconds.toFixed(2)}s`
+    : '';
+  document.getElementById('spaceBtn').textContent = selectedId !== null
+    ? 'Snap selected marker HERE (Space)'
+    : 'Add new marker (Space)';
+  document.getElementById('spaceBtn').classList.toggle('editing', selectedId !== null);
+}
+
+function startDrag(e, id) {
+  e.stopPropagation();
+  e.preventDefault();
+  selectedId = id;
+  const timeline = document.getElementById('timeline');
+  dragState = { id, rect: timeline.getBoundingClientRect(), moved: false };
+  renderAll();
+}
+
+document.addEventListener('mousemove', (e) => {
+  if (!dragState) return;
+  dragState.moved = true;
+  const v = document.getElementById('player');
+  const duration = v.duration || 1;
+  const rect = dragState.rect;
+  let pct = (e.clientX - rect.left) / rect.width;
+  pct = Math.max(0, Math.min(1, pct));
+  const t = pct * duration;
+  const l = labels.find(x => x.id === dragState.id);
+  if (l) { l.timestamp_seconds = t; renderTimeline(); }
+});
+
+document.addEventListener('mouseup', () => {
+  if (!dragState) return;
+  const l = labels.find(x => x.id === dragState.id);
+  if (l && dragState.moved) { l.reviewed = true; persistLabels(); }
+  if (l && !dragState.moved) {
+    // plain click, not a drag - just select+seek, already handled by selectMarker semantics
+    document.getElementById('player').currentTime = l.timestamp_seconds;
+  }
+  dragState = null;
+  renderAll();
+});
+
+document.getElementById('timeline').addEventListener('click', (e) => {
+  if (dragState) return;
+  const timeline = document.getElementById('timeline');
+  if (e.target !== timeline) return; // clicked a marker, handled separately
+  const v = document.getElementById('player');
+  const duration = v.duration || 1;
+  const rect = timeline.getBoundingClientRect();
+  const pct = (e.clientX - rect.left) / rect.width;
+  v.currentTime = pct * duration;
+});
+
+function renderLabelList() {
+  const list = document.getElementById('labelList');
+  document.getElementById('labelCount').textContent = labels.length;
+  document.getElementById('reviewedCount').textContent = labels.filter(l => l.reviewed).length;
+  const sorted = [...labels].sort((a, b) => a.timestamp_seconds - b.timestamp_seconds);
+  list.innerHTML = sorted.map(l => `
+    <div class="label-list-item ${l.reviewed ? 'reviewed' : ''} ${l.id === selectedId ? 'selected' : ''}" onclick="selectMarker(${l.id})">
+      <span>${l.timestamp_seconds.toFixed(2)}s (frame ${frameIndex(l.timestamp_seconds)}) ${l.label ? '- ' + l.label : ''}</span>
+      <button class="del" onclick="event.stopPropagation(); removeById(${l.id})">&times;</button>
+    </div>
+  `).join('');
+}
+
+function removeById(id) {
+  labels = labels.filter(x => x.id !== id);
+  if (selectedId === id) selectedId = null;
+  persistLabels();
+  renderAll();
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.code === 'Space') { e.preventDefault(); spaceAction(); }
+  else if (e.key === '[') step(e.shiftKey ? -10 : -1);
+  else if (e.key === ']') step(e.shiftKey ? 10 : 1);
+  else if (e.key === 'k' || e.key === 'K') togglePlay();
+  else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeSelected(); }
+  else if (e.key === 'Escape') deselect();
+});
+
+document.getElementById('player').addEventListener('timeupdate', () => {
+  const v = document.getElementById('player');
+  document.getElementById('timeDisplay').textContent = `${v.currentTime.toFixed(2)}s (frame ${frameIndex(v.currentTime)})`;
+  renderTimeline();
+});
+document.getElementById('player').addEventListener('seeked', () => {
+  const v = document.getElementById('player');
+  document.getElementById('timeDisplay').textContent = `${v.currentTime.toFixed(2)}s (frame ${frameIndex(v.currentTime)})`;
+});
+</script>
+
+</body>
+</html>
