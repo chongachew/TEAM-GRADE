@@ -25,7 +25,16 @@ from collections import defaultdict
 FPS = 15  # matches settings.FRAME_EXTRACTION_FPS
 
 # --- Pile-finding tuning ---
-PILE_RADIUS_IN_BOX_WIDTHS = 3.5  # cluster radius, in multiples of median bbox width (scale-invariant across zoom levels)
+# Calibrated against real tracking data for kJM5Uk9DtoQ (2026-07-25): the
+# original placeholder guess of 3.5 found a pile in only 41% of frames
+# despite a median of 9 tracked players/frame - real line-of-scrimmage
+# spacing (o-line + d-line spread across several yards) is wider than that.
+# A sweep of real radius values showed coverage climbing steadily up to ~8
+# (71%) then plateauing (74% at 12) - picked 8 as the point past which
+# widening the radius stops meaningfully helping and starts risking merging
+# genuinely separate groups of players (e.g. skill players in pre-snap
+# motion) into the same "pile".
+PILE_RADIUS_IN_BOX_WIDTHS = 8
 MIN_PILE_SIZE = 6  # fewer than this -> no reliable pile in this frame (likely a close-up), defer to the pixel-motion fallback
 
 # --- Calm-then-burst tuning ---
