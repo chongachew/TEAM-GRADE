@@ -1,0 +1,924 @@
+C:\Users\ricky\AppData\Local\Programs\Python\Python312\Lib\site-packages\torch\utils\data\dataloader.py:775: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+C:\Users\ricky\AppData\Local\Programs\Python\Python312\Lib\site-packages\torch\utils\data\dataloader.py:775: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+Running OCR across 871 frames with 2 worker processes...
+  100/871 frames done
+  200/871 frames done
+  300/871 frames done
+  400/871 frames done
+  500/871 frames done
+  600/871 frames done
+  700/871 frames done
+  800/871 frames done
+OCR pass complete: 871 frames.
+
+frame 600 (40.0s): raw=None confirmed=None clock=None
+frame 615 (41.0s): raw=None confirmed=None clock=None
+frame 630 (42.0s): raw=None confirmed=None clock=None
+frame 645 (43.0s): raw=None confirmed=None clock=None
+frame 660 (44.0s): raw=None confirmed=None clock=None
+frame 675 (45.0s): raw=None confirmed=None clock=None
+frame 690 (46.0s): raw=None confirmed=None clock=None
+frame 705 (47.0s): raw=None confirmed=None clock=None
+frame 720 (48.0s): raw=None confirmed=None clock=None
+frame 735 (49.0s): raw=None confirmed=None clock=None
+frame 750 (50.0s): raw=None confirmed=None clock=None
+frame 765 (51.0s): raw=None confirmed=None clock=None
+frame 780 (52.0s): raw=None confirmed=None clock=None
+frame 795 (53.0s): raw=None confirmed=None clock=None
+frame 810 (54.0s): raw=None confirmed=None clock=None
+frame 825 (55.0s): raw=None confirmed=None clock=None
+frame 840 (56.0s): raw=None confirmed=None clock=None
+frame 855 (57.0s): raw=None confirmed=None clock=None
+frame 870 (58.0s): raw=None confirmed=None clock=None
+frame 885 (59.0s): raw=None confirmed=None clock=None
+frame 900 (60.0s): raw=None confirmed=None clock=None
+frame 915 (61.0s): raw=None confirmed=None clock=None
+frame 930 (62.0s): raw=None confirmed=None clock=None
+frame 945 (63.0s): raw=None confirmed=None clock=None
+frame 960 (64.0s): raw='ist & 10' confirmed=None clock=None
+frame 975 (65.0s): raw='ist & 10' confirmed='ist & 10' clock=None <-- CONFIRMED BOUNDARY
+frame 990 (66.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1005 (67.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1020 (68.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1035 (69.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1050 (70.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1065 (71.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1080 (72.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1095 (73.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1110 (74.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1125 (75.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1140 (76.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1155 (77.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1170 (78.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1185 (79.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1200 (80.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1215 (81.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1230 (82.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 1245 (83.0s): raw=None confirmed='ist & 10' clock=None
+frame 1260 (84.0s): raw=None confirmed=None clock=None
+frame 1275 (85.0s): raw=None confirmed=None clock=None
+frame 1290 (86.0s): raw=None confirmed=None clock=None
+frame 1305 (87.0s): raw=None confirmed=None clock=None
+frame 1320 (88.0s): raw=None confirmed=None clock=None
+frame 1335 (89.0s): raw=None confirmed=None clock=None
+frame 1350 (90.0s): raw=None confirmed=None clock=None
+frame 1365 (91.0s): raw=None confirmed=None clock=None
+frame 1380 (92.0s): raw=None confirmed=None clock=None
+frame 1395 (93.0s): raw=None confirmed=None clock=None
+frame 1410 (94.0s): raw=None confirmed=None clock=None
+frame 1425 (95.0s): raw=None confirmed=None clock=None
+frame 1440 (96.0s): raw=None confirmed=None clock=None
+frame 1455 (97.0s): raw=None confirmed=None clock=None
+frame 1470 (98.0s): raw=None confirmed=None clock=None
+frame 1485 (99.0s): raw=None confirmed=None clock=None
+frame 1500 (100.0s): raw=None confirmed=None clock=None
+frame 1515 (101.0s): raw=None confirmed=None clock=None
+frame 1530 (102.0s): raw=None confirmed=None clock=None
+frame 1545 (103.0s): raw=None confirmed=None clock=None
+frame 1560 (104.0s): raw=None confirmed=None clock=None
+frame 1575 (105.0s): raw=None confirmed=None clock=None
+frame 1590 (106.0s): raw=None confirmed=None clock=None
+frame 1605 (107.0s): raw=None confirmed=None clock=None
+frame 1620 (108.0s): raw=None confirmed=None clock=None
+frame 1635 (109.0s): raw=None confirmed=None clock=None
+frame 1650 (110.0s): raw=None confirmed=None clock=None
+frame 1665 (111.0s): raw=None confirmed=None clock=None
+frame 1680 (112.0s): raw=None confirmed=None clock=None
+frame 1695 (113.0s): raw=None confirmed=None clock=None
+frame 1710 (114.0s): raw=None confirmed=None clock=None
+frame 1725 (115.0s): raw=None confirmed=None clock=None
+frame 1740 (116.0s): raw=None confirmed=None clock=None
+frame 1755 (117.0s): raw=None confirmed=None clock=None
+frame 1770 (118.0s): raw=None confirmed=None clock=None
+frame 1785 (119.0s): raw=None confirmed=None clock=None
+frame 1800 (120.0s): raw=None confirmed=None clock=None
+frame 1815 (121.0s): raw=None confirmed=None clock=None
+frame 1830 (122.0s): raw='3rd & 8' confirmed=None clock=None
+frame 1845 (123.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None <-- CONFIRMED BOUNDARY
+frame 1860 (124.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None
+frame 1875 (125.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None
+frame 1890 (126.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None
+frame 1905 (127.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None
+frame 1920 (128.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None
+frame 1935 (129.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None
+frame 1950 (130.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None
+frame 1965 (131.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None
+frame 1980 (132.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None
+frame 1995 (133.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None
+frame 2010 (134.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None
+frame 2025 (135.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None
+frame 2040 (136.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None
+frame 2055 (137.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:55
+frame 2070 (138.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:54
+frame 2085 (139.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:53
+frame 2100 (140.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:52
+frame 2115 (141.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:51
+frame 2130 (142.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:51
+frame 2145 (143.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:50
+frame 2160 (144.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:49
+frame 2175 (145.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:48
+frame 2190 (146.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:47
+frame 2205 (147.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:46
+frame 2220 (148.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:45
+frame 2235 (149.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:44
+frame 2250 (150.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:43
+frame 2265 (151.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:42
+frame 2280 (152.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:42
+frame 2295 (153.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:41
+frame 2310 (154.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:40
+frame 2325 (155.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None
+frame 2340 (156.0s): raw='3rd & 8' confirmed='3rd & 8' Q1 5:38
+frame 2355 (157.0s): raw='3rd & 8' confirmed='3rd & 8' clock=None
+frame 2370 (158.0s): raw='ist & 10' confirmed='3rd & 8' clock=None
+frame 2385 (159.0s): raw='ist & 10' confirmed='ist & 10' clock=None <-- CONFIRMED BOUNDARY
+frame 2400 (160.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:18
+frame 2415 (161.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:18
+frame 2430 (162.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:17
+frame 2445 (163.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:16
+frame 2460 (164.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:15
+frame 2475 (165.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 2490 (166.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:13
+frame 2505 (167.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:12
+frame 2520 (168.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:11
+frame 2535 (169.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:10
+frame 2550 (170.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:09
+frame 2565 (171.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:09
+frame 2580 (172.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:08
+frame 2595 (173.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:07
+frame 2610 (174.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 2625 (175.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 2640 (176.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:04
+frame 2655 (177.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:03
+frame 2670 (178.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:02
+frame 2685 (179.0s): raw='ist & 10' confirmed='ist & 10' Q1 5:01
+frame 2700 (180.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 2715 (181.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 2730 (182.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 2745 (183.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 2760 (184.0s): raw=None confirmed='ist & 10' Q1 5:00
+frame 2775 (185.0s): raw=None confirmed=None clock=None
+frame 2790 (186.0s): raw=None confirmed=None clock=None
+frame 2805 (187.0s): raw=None confirmed=None clock=None
+frame 2820 (188.0s): raw='ist & 10' confirmed=None Q1 4:54
+frame 2835 (189.0s): raw='ist & 10' confirmed='ist & 10' Q1 4:54 <-- CONFIRMED BOUNDARY
+frame 2850 (190.0s): raw='ist & 10' confirmed='ist & 10' Q1 4:54
+frame 2865 (191.0s): raw='ist & 10' confirmed='ist & 10' Q1 4:54
+frame 2880 (192.0s): raw='ist & 10' confirmed='ist & 10' Q1 4:53
+frame 2895 (193.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 2910 (194.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 2925 (195.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 2940 (196.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 2955 (197.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 2970 (198.0s): raw='ist & 10' confirmed='ist & 10' Q1 4:48
+frame 2985 (199.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3000 (200.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3015 (201.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3030 (202.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3045 (203.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3060 (204.0s): raw='ist & 10' confirmed='ist & 10' Q1 4:42
+frame 3075 (205.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3090 (206.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3105 (207.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3120 (208.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3135 (209.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3150 (210.0s): raw='ist & 10' confirmed='ist & 10' Q1 4:40
+frame 3165 (211.0s): raw='ist & 10' confirmed='ist & 10' Q1 4:40
+frame 3180 (212.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3195 (213.0s): raw='ist & 10' confirmed='ist & 10' Q1 4:40
+frame 3210 (214.0s): raw='ist & 10' confirmed='ist & 10' Q1 4:40
+frame 3225 (215.0s): raw='ist & 10' confirmed='ist & 10' Q1 4:40
+frame 3240 (216.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3255 (217.0s): raw='ist & 10' confirmed='ist & 10' Q1 4:40
+frame 3270 (218.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3285 (219.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3300 (220.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3315 (221.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3330 (222.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3345 (223.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3360 (224.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3375 (225.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3390 (226.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3405 (227.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3420 (228.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3435 (229.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3450 (230.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3465 (231.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3480 (232.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3495 (233.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3510 (234.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3525 (235.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3540 (236.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3555 (237.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 3570 (238.0s): raw='3rd & 15' confirmed='ist & 10' clock=None
+frame 3585 (239.0s): raw='3rd & 15' confirmed='3rd & 15' Q1 2:59 <-- CONFIRMED BOUNDARY
+frame 3600 (240.0s): raw='3rd & 15' confirmed='3rd & 15' Q1 2:58
+frame 3615 (241.0s): raw='3rd & 15' confirmed='3rd & 15' Q1 2:57
+frame 3630 (242.0s): raw='3rd & 15' confirmed='3rd & 15' Q1 2:56
+frame 3645 (243.0s): raw='3rd & 15' confirmed='3rd & 15' Q1 2:55
+frame 3660 (244.0s): raw='3rd & 15' confirmed='3rd & 15' Q1 2:54
+frame 3675 (245.0s): raw='3rd & 15' confirmed='3rd & 15' Q1 2:53
+frame 3690 (246.0s): raw='3rd & 15' confirmed='3rd & 15' Q1 2:52
+frame 3705 (247.0s): raw='3rd & 15' confirmed='3rd & 15' Q1 2:52
+frame 3720 (248.0s): raw='3rd & 15' confirmed='3rd & 15' Q1 2:51
+frame 3735 (249.0s): raw='3rd & 15' confirmed='3rd & 15' Q1 2:51
+frame 3750 (250.0s): raw='3rd & 15' confirmed='3rd & 15' Q1 2:51
+frame 3765 (251.0s): raw=None confirmed='3rd & 15' Q1 0:18
+frame 3780 (252.0s): raw=None confirmed=None Q1 0:17
+frame 3795 (253.0s): raw=None confirmed=None Q1 0:16
+frame 3810 (254.0s): raw=None confirmed=None Q1 0:15
+frame 3825 (255.0s): raw=None confirmed=None Q1 0:15
+frame 3840 (256.0s): raw=None confirmed=None Q1 0:14
+frame 3855 (257.0s): raw=None confirmed=None Q1 0:13
+frame 3870 (258.0s): raw=None confirmed=None Q1 0:12
+frame 3885 (259.0s): raw=None confirmed=None Q1 0:11
+frame 3900 (260.0s): raw=None confirmed=None Q1 0:10
+frame 3915 (261.0s): raw=None confirmed=None Q1 0:09
+frame 3930 (262.0s): raw=None confirmed=None clock=None
+frame 3945 (263.0s): raw=None confirmed=None Q1 0:07
+frame 3960 (264.0s): raw=None confirmed=None clock=None
+frame 3975 (265.0s): raw=None confirmed=None clock=None
+frame 3990 (266.0s): raw=None confirmed=None clock=None
+frame 4005 (267.0s): raw=None confirmed=None Q1 0:04
+frame 4020 (268.0s): raw=None confirmed=None Q1 0:03
+frame 4035 (269.0s): raw=None confirmed=None clock=None
+frame 4050 (270.0s): raw=None confirmed=None clock=None
+frame 4065 (271.0s): raw=None confirmed=None clock=None
+frame 4080 (272.0s): raw=None confirmed=None clock=None
+frame 4095 (273.0s): raw=None confirmed=None clock=None
+frame 4110 (274.0s): raw=None confirmed=None clock=None
+frame 4125 (275.0s): raw='ist & 10' confirmed=None clock=None
+frame 4140 (276.0s): raw='ist & 10' confirmed='ist & 10' clock=None <-- CONFIRMED BOUNDARY
+frame 4155 (277.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4170 (278.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4185 (279.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4200 (280.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4215 (281.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4230 (282.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4245 (283.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4260 (284.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4275 (285.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4290 (286.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4305 (287.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4320 (288.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4335 (289.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4350 (290.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4365 (291.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4380 (292.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4395 (293.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4410 (294.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4425 (295.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4440 (296.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4455 (297.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4470 (298.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4485 (299.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4500 (300.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4515 (301.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4530 (302.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 4545 (303.0s): raw=None confirmed='ist & 10' clock=None
+frame 4560 (304.0s): raw=None confirmed=None clock=None
+frame 4575 (305.0s): raw=None confirmed=None clock=None
+frame 4590 (306.0s): raw=None confirmed=None clock=None
+frame 4605 (307.0s): raw=None confirmed=None clock=None
+frame 4620 (308.0s): raw=None confirmed=None clock=None
+frame 4635 (309.0s): raw=None confirmed=None clock=None
+frame 4650 (310.0s): raw=None confirmed=None clock=None
+frame 4665 (311.0s): raw=None confirmed=None clock=None
+frame 4680 (312.0s): raw=None confirmed=None clock=None
+frame 4695 (313.0s): raw=None confirmed=None clock=None
+frame 4710 (314.0s): raw=None confirmed=None clock=None
+frame 4725 (315.0s): raw=None confirmed=None clock=None
+frame 4740 (316.0s): raw=None confirmed=None clock=None
+frame 4755 (317.0s): raw=None confirmed=None clock=None
+frame 4770 (318.0s): raw=None confirmed=None clock=None
+frame 4785 (319.0s): raw=None confirmed=None clock=None
+frame 4800 (320.0s): raw=None confirmed=None clock=None
+frame 4815 (321.0s): raw='ist & goal' confirmed=None clock=None
+frame 4830 (322.0s): raw='ist & goal' confirmed='ist & goal' clock=None <-- CONFIRMED BOUNDARY
+frame 4845 (323.0s): raw='ist & goal' confirmed='ist & goal' clock=None
+frame 4860 (324.0s): raw='ist & goal' confirmed='ist & goal' clock=None
+frame 4875 (325.0s): raw='ist & goal' confirmed='ist & goal' clock=None
+frame 4890 (326.0s): raw='ist & goal' confirmed='ist & goal' clock=None
+frame 4905 (327.0s): raw='ist & goal' confirmed='ist & goal' clock=None
+frame 4920 (328.0s): raw='ist & goal' confirmed='ist & goal' clock=None
+frame 4935 (329.0s): raw='ist & goal' confirmed='ist & goal' clock=None
+frame 4950 (330.0s): raw='ist & goal' confirmed='ist & goal' clock=None
+frame 4965 (331.0s): raw='ist & goal' confirmed='ist & goal' clock=None
+frame 4980 (332.0s): raw='ist & goal' confirmed='ist & goal' clock=None
+frame 4995 (333.0s): raw=None confirmed='ist & goal' clock=None
+frame 5010 (334.0s): raw=None confirmed=None clock=None
+frame 5025 (335.0s): raw=None confirmed=None clock=None
+frame 5040 (336.0s): raw=None confirmed=None clock=None
+frame 5055 (337.0s): raw=None confirmed=None clock=None
+frame 5070 (338.0s): raw='ist & 10' confirmed=None clock=None
+frame 5085 (339.0s): raw='ist & 10' confirmed='ist & 10' clock=None <-- CONFIRMED BOUNDARY
+frame 5100 (340.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5115 (341.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5130 (342.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5145 (343.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5160 (344.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5175 (345.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5190 (346.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5205 (347.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5220 (348.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5235 (349.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5250 (350.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5265 (351.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5280 (352.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5295 (353.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5310 (354.0s): raw='3rd & 12' confirmed='ist & 10' clock=None
+frame 5325 (355.0s): raw='3rd & 12' confirmed='3rd & 12' clock=None <-- CONFIRMED BOUNDARY
+frame 5340 (356.0s): raw='3rd & 12' confirmed='3rd & 12' clock=None
+frame 5355 (357.0s): raw='3rd & 12' confirmed='3rd & 12' clock=None
+frame 5370 (358.0s): raw='3rd & 12' confirmed='3rd & 12' clock=None
+frame 5385 (359.0s): raw='3rd & 12' confirmed='3rd & 12' clock=None
+frame 5400 (360.0s): raw='3rd & 12' confirmed='3rd & 12' clock=None
+frame 5415 (361.0s): raw='3rd & 12' confirmed='3rd & 12' clock=None
+frame 5430 (362.0s): raw='3rd & 12' confirmed='3rd & 12' clock=None
+frame 5445 (363.0s): raw='3rd & 12' confirmed='3rd & 12' clock=None
+frame 5460 (364.0s): raw='3rd & 12' confirmed='3rd & 12' clock=None
+frame 5475 (365.0s): raw='3rd & 12' confirmed='3rd & 12' clock=None
+frame 5490 (366.0s): raw='3rd & 12' confirmed='3rd & 12' clock=None
+frame 5505 (367.0s): raw='3rd & 12' confirmed='3rd & 12' clock=None
+frame 5520 (368.0s): raw='4th & 4' confirmed='3rd & 12' clock=None
+frame 5535 (369.0s): raw='4th & 4' confirmed='4th & 4' clock=None <-- CONFIRMED BOUNDARY
+frame 5550 (370.0s): raw='4th & 4' confirmed='4th & 4' clock=None
+frame 5565 (371.0s): raw='4th & 4' confirmed='4th & 4' clock=None
+frame 5580 (372.0s): raw='4th & 4' confirmed='4th & 4' clock=None
+frame 5595 (373.0s): raw='4th & 4' confirmed='4th & 4' clock=None
+frame 5610 (374.0s): raw='4th & 4' confirmed='4th & 4' clock=None
+frame 5625 (375.0s): raw='4th & 4' confirmed='4th & 4' clock=None
+frame 5640 (376.0s): raw='4th & 4' confirmed='4th & 4' clock=None
+frame 5655 (377.0s): raw='4th & 4' confirmed='4th & 4' clock=None
+frame 5670 (378.0s): raw='4th & 4' confirmed='4th & 4' clock=None
+frame 5685 (379.0s): raw='3rd & 3' confirmed='4th & 4' clock=None
+frame 5700 (380.0s): raw='3rd & 3' confirmed='3rd & 3' clock=None <-- CONFIRMED BOUNDARY
+frame 5715 (381.0s): raw='3rd & 3' confirmed='3rd & 3' clock=None
+frame 5730 (382.0s): raw='3rd & 3' confirmed='3rd & 3' clock=None
+frame 5745 (383.0s): raw='3rd & 3' confirmed='3rd & 3' clock=None
+frame 5760 (384.0s): raw='3rd & 3' confirmed='3rd & 3' clock=None
+frame 5775 (385.0s): raw='3rd & 3' confirmed='3rd & 3' clock=None
+frame 5790 (386.0s): raw='3rd & 3' confirmed='3rd & 3' clock=None
+frame 5805 (387.0s): raw='3rd & 3' confirmed='3rd & 3' clock=None
+frame 5820 (388.0s): raw='3rd & 3' confirmed='3rd & 3' clock=None
+frame 5835 (389.0s): raw='3rd & 3' confirmed='3rd & 3' clock=None
+frame 5850 (390.0s): raw='3rd & 3' confirmed='3rd & 3' clock=None
+frame 5865 (391.0s): raw='3rd & 3' confirmed='3rd & 3' clock=None
+frame 5880 (392.0s): raw='3rd & 3' confirmed='3rd & 3' clock=None
+frame 5895 (393.0s): raw='3rd & 3' confirmed='3rd & 3' clock=None
+frame 5910 (394.0s): raw='ist & 10' confirmed='3rd & 3' clock=None
+frame 5925 (395.0s): raw='ist & 10' confirmed='ist & 10' clock=None <-- CONFIRMED BOUNDARY
+frame 5940 (396.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5955 (397.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5970 (398.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 5985 (399.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6000 (400.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6015 (401.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6030 (402.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6045 (403.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6060 (404.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6075 (405.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6090 (406.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6105 (407.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6120 (408.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6135 (409.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6150 (410.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6165 (411.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6180 (412.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6195 (413.0s): raw=None confirmed='ist & 10' clock=None
+frame 6210 (414.0s): raw=None confirmed=None clock=None
+frame 6225 (415.0s): raw=None confirmed=None clock=None
+frame 6240 (416.0s): raw=None confirmed=None clock=None
+frame 6255 (417.0s): raw=None confirmed=None clock=None
+frame 6270 (418.0s): raw=None confirmed=None clock=None
+frame 6285 (419.0s): raw=None confirmed=None clock=None
+frame 6300 (420.0s): raw=None confirmed=None clock=None
+frame 6315 (421.0s): raw=None confirmed=None clock=None
+frame 6330 (422.0s): raw=None confirmed=None clock=None
+frame 6345 (423.0s): raw=None confirmed=None clock=None
+frame 6360 (424.0s): raw=None confirmed=None clock=None
+frame 6375 (425.0s): raw=None confirmed=None clock=None
+frame 6390 (426.0s): raw=None confirmed=None clock=None
+frame 6405 (427.0s): raw=None confirmed=None clock=None
+frame 6420 (428.0s): raw='ist & 10' confirmed=None clock=None
+frame 6435 (429.0s): raw='ist & 10' confirmed='ist & 10' clock=None <-- CONFIRMED BOUNDARY
+frame 6450 (430.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6465 (431.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6480 (432.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6495 (433.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6510 (434.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6525 (435.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6540 (436.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6555 (437.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6570 (438.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6585 (439.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6600 (440.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6615 (441.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6630 (442.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 6645 (443.0s): raw=None confirmed='ist & 10' clock=None
+frame 6660 (444.0s): raw=None confirmed=None clock=None
+frame 6675 (445.0s): raw=None confirmed=None clock=None
+frame 6690 (446.0s): raw=None confirmed=None clock=None
+frame 6705 (447.0s): raw=None confirmed=None clock=None
+frame 6720 (448.0s): raw=None confirmed=None clock=None
+frame 6735 (449.0s): raw=None confirmed=None clock=None
+frame 6750 (450.0s): raw=None confirmed=None clock=None
+frame 6765 (451.0s): raw=None confirmed=None clock=None
+frame 6780 (452.0s): raw=None confirmed=None clock=None
+frame 6795 (453.0s): raw=None confirmed=None clock=None
+frame 6810 (454.0s): raw=None confirmed=None clock=None
+frame 6825 (455.0s): raw=None confirmed=None clock=None
+frame 6840 (456.0s): raw=None confirmed=None clock=None
+frame 6855 (457.0s): raw=None confirmed=None clock=None
+frame 6870 (458.0s): raw=None confirmed=None clock=None
+frame 6885 (459.0s): raw=None confirmed=None clock=None
+frame 6900 (460.0s): raw=None confirmed=None clock=None
+frame 6915 (461.0s): raw=None confirmed=None clock=None
+frame 6930 (462.0s): raw=None confirmed=None clock=None
+frame 6945 (463.0s): raw=None confirmed=None clock=None
+frame 6960 (464.0s): raw=None confirmed=None clock=None
+frame 6975 (465.0s): raw=None confirmed=None clock=None
+frame 6990 (466.0s): raw=None confirmed=None clock=None
+frame 7005 (467.0s): raw=None confirmed=None clock=None
+frame 7020 (468.0s): raw=None confirmed=None clock=None
+frame 7035 (469.0s): raw=None confirmed=None clock=None
+frame 7050 (470.0s): raw=None confirmed=None clock=None
+frame 7065 (471.0s): raw=None confirmed=None clock=None
+frame 7080 (472.0s): raw=None confirmed=None clock=None
+frame 7095 (473.0s): raw=None confirmed=None clock=None
+frame 7110 (474.0s): raw='3rd & 20' confirmed=None clock=None
+frame 7125 (475.0s): raw='3rd & 20' confirmed='3rd & 20' clock=None <-- CONFIRMED BOUNDARY
+frame 7140 (476.0s): raw='3rd & 20' confirmed='3rd & 20' clock=None
+frame 7155 (477.0s): raw='3rd & 20' confirmed='3rd & 20' clock=None
+frame 7170 (478.0s): raw='3rd & 20' confirmed='3rd & 20' clock=None
+frame 7185 (479.0s): raw='3rd & 20' confirmed='3rd & 20' clock=None
+frame 7200 (480.0s): raw='3rd & 20' confirmed='3rd & 20' clock=None
+frame 7215 (481.0s): raw='3rd & 20' confirmed='3rd & 20' clock=None
+frame 7230 (482.0s): raw='3rd & 20' confirmed='3rd & 20' clock=None
+frame 7245 (483.0s): raw='3rd & 20' confirmed='3rd & 20' clock=None
+frame 7260 (484.0s): raw='3rd & 20' confirmed='3rd & 20' clock=None
+frame 7275 (485.0s): raw='3rd & 20' confirmed='3rd & 20' clock=None
+frame 7290 (486.0s): raw='3rd & 20' confirmed='3rd & 20' clock=None
+frame 7305 (487.0s): raw='3rd & 20' confirmed='3rd & 20' clock=None
+frame 7320 (488.0s): raw='ist & 10' confirmed='3rd & 20' Q3 15:00
+frame 7335 (489.0s): raw='ist & 10' confirmed='ist & 10' Q3 15:00 <-- CONFIRMED BOUNDARY
+frame 7350 (490.0s): raw='ist & 10' confirmed='ist & 10' Q3 14:59
+frame 7365 (491.0s): raw='ist & 10' confirmed='ist & 10' Q3 14:58
+frame 7380 (492.0s): raw='ist & 10' confirmed='ist & 10' Q3 14:57
+frame 7395 (493.0s): raw='ist & 10' confirmed='ist & 10' Q3 14:56
+frame 7410 (494.0s): raw='ist & 10' confirmed='ist & 10' Q3 14:56
+frame 7425 (495.0s): raw='ist & 10' confirmed='ist & 10' Q3 14:55
+frame 7440 (496.0s): raw='ist & 10' confirmed='ist & 10' Q3 14:54
+frame 7455 (497.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 7470 (498.0s): raw='ist & 10' confirmed='ist & 10' Q3 14:54
+frame 7485 (499.0s): raw='ist & 10' confirmed='ist & 10' Q3 14:54
+frame 7500 (500.0s): raw='ist & 10' confirmed='ist & 10' Q3 14:54
+frame 7515 (501.0s): raw=None confirmed='ist & 10' clock=None
+frame 7530 (502.0s): raw=None confirmed=None clock=None
+frame 7545 (503.0s): raw=None confirmed=None clock=None
+frame 7560 (504.0s): raw=None confirmed=None clock=None
+frame 7575 (505.0s): raw=None confirmed=None clock=None
+frame 7590 (506.0s): raw=None confirmed=None clock=None
+frame 7605 (507.0s): raw=None confirmed=None clock=None
+frame 7620 (508.0s): raw=None confirmed=None Q3 14:27
+frame 7635 (509.0s): raw=None confirmed=None clock=None
+frame 7650 (510.0s): raw=None confirmed=None Q3 14:25
+frame 7665 (511.0s): raw=None confirmed=None Q3 14:24
+frame 7680 (512.0s): raw=None confirmed=None clock=None
+frame 7695 (513.0s): raw=None confirmed=None Q3 14:22
+frame 7710 (514.0s): raw=None confirmed=None clock=None
+frame 7725 (515.0s): raw=None confirmed=None clock=None
+frame 7740 (516.0s): raw=None confirmed=None clock=None
+frame 7755 (517.0s): raw=None confirmed=None Q3 14:19
+frame 7770 (518.0s): raw=None confirmed=None Q3 14:19
+frame 7785 (519.0s): raw=None confirmed=None clock=None
+frame 7800 (520.0s): raw=None confirmed=None clock=None
+frame 7815 (521.0s): raw=None confirmed=None Q3 14:19
+frame 7830 (522.0s): raw=None confirmed=None clock=None
+frame 7845 (523.0s): raw=None confirmed=None clock=None
+frame 7860 (524.0s): raw=None confirmed=None clock=None
+frame 7875 (525.0s): raw=None confirmed=None clock=None
+frame 7890 (526.0s): raw=None confirmed=None clock=None
+frame 7905 (527.0s): raw='ist & 10' confirmed=None Q3 12:59
+frame 7920 (528.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:59 <-- CONFIRMED BOUNDARY
+frame 7935 (529.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:59
+frame 7950 (530.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:58
+frame 7965 (531.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:58
+frame 7980 (532.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:57
+frame 7995 (533.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:56
+frame 8010 (534.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:55
+frame 8025 (535.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:54
+frame 8040 (536.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:53
+frame 8055 (537.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:52
+frame 8070 (538.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:51
+frame 8085 (539.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:50
+frame 8100 (540.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:49
+frame 8115 (541.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:49
+frame 8130 (542.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:48
+frame 8145 (543.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:47
+frame 8160 (544.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:46
+frame 8175 (545.0s): raw='ist & 10' confirmed='ist & 10' Q3 12:45
+frame 8190 (546.0s): raw='ist & goal' confirmed='ist & 10' Q3 12:11
+frame 8205 (547.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:10 <-- CONFIRMED BOUNDARY
+frame 8220 (548.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:09
+frame 8235 (549.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:08
+frame 8250 (550.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:07
+frame 8265 (551.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:06
+frame 8280 (552.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:05
+frame 8295 (553.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:04
+frame 8310 (554.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:03
+frame 8325 (555.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:02
+frame 8340 (556.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:02
+frame 8355 (557.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:02
+frame 8370 (558.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:02
+frame 8385 (559.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:02
+frame 8400 (560.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:02
+frame 8415 (561.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:02
+frame 8430 (562.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:02
+frame 8445 (563.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:02
+frame 8460 (564.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:02
+frame 8475 (565.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:02
+frame 8490 (566.0s): raw='ist & goal' confirmed='ist & goal' Q3 12:02
+frame 8505 (567.0s): raw=None confirmed='ist & goal' Q3 12:02
+frame 8520 (568.0s): raw=None confirmed=None Q3 12:02
+frame 8535 (569.0s): raw=None confirmed=None Q3 12:02
+frame 8550 (570.0s): raw=None confirmed=None Q3 12:02
+frame 8565 (571.0s): raw=None confirmed=None Q3 12:02
+frame 8580 (572.0s): raw=None confirmed=None Q3 12:02
+frame 8595 (573.0s): raw=None confirmed=None Q3 12:02
+frame 8610 (574.0s): raw=None confirmed=None Q3 12:02
+frame 8625 (575.0s): raw=None confirmed=None Q3 12:02
+frame 8640 (576.0s): raw=None confirmed=None Q3 12:02
+frame 8655 (577.0s): raw=None confirmed=None Q3 12:02
+frame 8670 (578.0s): raw=None confirmed=None Q3 12:02
+frame 8685 (579.0s): raw=None confirmed=None Q3 12:02
+frame 8700 (580.0s): raw=None confirmed=None Q3 12:02
+frame 8715 (581.0s): raw=None confirmed=None Q3 12:02
+frame 8730 (582.0s): raw=None confirmed=None Q3 12:02
+frame 8745 (583.0s): raw=None confirmed=None Q3 12:02
+frame 8760 (584.0s): raw=None confirmed=None Q3 12:02
+frame 8775 (585.0s): raw=None confirmed=None Q3 12:02
+frame 8790 (586.0s): raw=None confirmed=None Q3 12:02
+frame 8805 (587.0s): raw=None confirmed=None Q3 12:02
+frame 8820 (588.0s): raw=None confirmed=None Q3 12:02
+frame 8835 (589.0s): raw=None confirmed=None Q3 12:02
+frame 8850 (590.0s): raw=None confirmed=None Q3 12:02
+frame 8865 (591.0s): raw=None confirmed=None Q3 12:02
+frame 8880 (592.0s): raw=None confirmed=None Q3 12:02
+frame 8895 (593.0s): raw=None confirmed=None Q3 12:01
+frame 8910 (594.0s): raw=None confirmed=None clock=None
+frame 8925 (595.0s): raw=None confirmed=None Q3 11:59
+frame 8940 (596.0s): raw=None confirmed=None Q3 11:58
+frame 8955 (597.0s): raw=None confirmed=None Q3 11:57
+frame 8970 (598.0s): raw=None confirmed=None Q3 11:56
+frame 8985 (599.0s): raw=None confirmed=None Q3 11:56
+frame 9000 (600.0s): raw=None confirmed=None Q3 11:55
+frame 9015 (601.0s): raw=None confirmed=None clock=None
+frame 9030 (602.0s): raw=None confirmed=None Q3 11:53
+frame 9045 (603.0s): raw=None confirmed=None Q3 11:52
+frame 9060 (604.0s): raw=None confirmed=None Q3 11:51
+frame 9075 (605.0s): raw=None confirmed=None Q3 11:50
+frame 9090 (606.0s): raw=None confirmed=None Q3 11:49
+frame 9105 (607.0s): raw=None confirmed=None Q3 11:48
+frame 9120 (608.0s): raw=None confirmed=None Q3 11:48
+frame 9135 (609.0s): raw=None confirmed=None Q3 11:48
+frame 9150 (610.0s): raw=None confirmed=None clock=None
+frame 9165 (611.0s): raw=None confirmed=None clock=None
+frame 9180 (612.0s): raw=None confirmed=None clock=None
+frame 9195 (613.0s): raw=None confirmed=None clock=None
+frame 9210 (614.0s): raw=None confirmed=None clock=None
+frame 9225 (615.0s): raw=None confirmed=None clock=None
+frame 9240 (616.0s): raw=None confirmed=None clock=None
+frame 9255 (617.0s): raw=None confirmed=None clock=None
+frame 9270 (618.0s): raw=None confirmed=None clock=None
+frame 9285 (619.0s): raw=None confirmed=None Q3 11:48
+frame 9300 (620.0s): raw=None confirmed=None Q3 11:48
+frame 9315 (621.0s): raw=None confirmed=None Q3 11:48
+frame 9330 (622.0s): raw=None confirmed=None Q3 11:48
+frame 9345 (623.0s): raw=None confirmed=None Q3 11:48
+frame 9360 (624.0s): raw=None confirmed=None Q3 11:48
+frame 9375 (625.0s): raw=None confirmed=None Q3 11:48
+frame 9390 (626.0s): raw=None confirmed=None Q3 11:48
+frame 9405 (627.0s): raw=None confirmed=None Q3 11:48
+frame 9420 (628.0s): raw=None confirmed=None Q3 11:48
+frame 9435 (629.0s): raw=None confirmed=None Q3 11:48
+frame 9450 (630.0s): raw=None confirmed=None Q3 11:48
+frame 9465 (631.0s): raw=None confirmed=None Q3 11:48
+frame 9480 (632.0s): raw=None confirmed=None Q3 11:48
+frame 9495 (633.0s): raw=None confirmed=None Q3 11:48
+frame 9510 (634.0s): raw=None confirmed=None Q3 11:48
+frame 9525 (635.0s): raw=None confirmed=None Q3 11:48
+frame 9540 (636.0s): raw=None confirmed=None Q3 11:48
+frame 9555 (637.0s): raw=None confirmed=None Q3 11:48
+frame 9570 (638.0s): raw=None confirmed=None Q3 11:48
+frame 9585 (639.0s): raw=None confirmed=None Q3 11:48
+frame 9600 (640.0s): raw=None confirmed=None Q3 11:48
+frame 9615 (641.0s): raw=None confirmed=None Q3 11:48
+frame 9630 (642.0s): raw='3rd & 2' confirmed=None clock=None
+frame 9645 (643.0s): raw='3rd & 2' confirmed='3rd & 2' Q3 7:09 <-- CONFIRMED BOUNDARY
+frame 9660 (644.0s): raw='3rd & 2' confirmed='3rd & 2' Q3 7:08
+frame 9675 (645.0s): raw='3rd & 2' confirmed='3rd & 2' Q3 7:07
+frame 9690 (646.0s): raw='3rd & 2' confirmed='3rd & 2' Q3 7:06
+frame 9705 (647.0s): raw='3rd & 2' confirmed='3rd & 2' Q3 7:05
+frame 9720 (648.0s): raw='3rd & 2' confirmed='3rd & 2' Q3 7:04
+frame 9735 (649.0s): raw='3rd & 2' confirmed='3rd & 2' Q3 7:03
+frame 9750 (650.0s): raw='3rd & 2' confirmed='3rd & 2' Q3 7:02
+frame 9765 (651.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 9780 (652.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 9795 (653.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 9810 (654.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 9825 (655.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 9840 (656.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 9855 (657.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 9870 (658.0s): raw='4th & 2' confirmed='3rd & 2' clock=None
+frame 9885 (659.0s): raw='4th & 2' confirmed='4th & 2' clock=None <-- CONFIRMED BOUNDARY
+frame 9900 (660.0s): raw='3rd & 5' confirmed='4th & 2' Q3 3:38
+frame 9915 (661.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None <-- CONFIRMED BOUNDARY
+frame 9930 (662.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None
+frame 9945 (663.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None
+frame 9960 (664.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None
+frame 9975 (665.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None
+frame 9990 (666.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None
+frame 10005 (667.0s): raw='3rd & 50' confirmed='3rd & 5' clock=None
+frame 10020 (668.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None
+frame 10035 (669.0s): raw='3rd & 5' confirmed='3rd & 5' Q3 3:30
+frame 10050 (670.0s): raw='3rd & 5' confirmed='3rd & 5' Q3 3:29
+frame 10065 (671.0s): raw='3rd & 5' confirmed='3rd & 5' Q3 3:28
+frame 10080 (672.0s): raw='3rd & 5' confirmed='3rd & 5' Q3 3:27
+frame 10095 (673.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None
+frame 10110 (674.0s): raw='3rd & 5' confirmed='3rd & 5' Q3 3:25
+frame 10125 (675.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None
+frame 10140 (676.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None
+frame 10155 (677.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None
+frame 10170 (678.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None
+frame 10185 (679.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None
+frame 10200 (680.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None
+frame 10215 (681.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None
+frame 10230 (682.0s): raw='3rd & 5' confirmed='3rd & 5' clock=None
+frame 10245 (683.0s): raw=None confirmed='3rd & 5' clock=None
+frame 10260 (684.0s): raw=None confirmed=None clock=None
+frame 10275 (685.0s): raw=None confirmed=None clock=None
+frame 10290 (686.0s): raw='ist& 10' confirmed=None clock=None
+frame 10305 (687.0s): raw='ist & 10' confirmed=None Q3 3:23
+frame 10320 (688.0s): raw='ist & 10' confirmed='ist & 10' clock=None <-- CONFIRMED BOUNDARY
+frame 10335 (689.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 10350 (690.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 10365 (691.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 10380 (692.0s): raw='ist & 10' confirmed='ist & 10' Q3 3:19
+frame 10395 (693.0s): raw='ist & 10' confirmed='ist & 10' Q3 3:18
+frame 10410 (694.0s): raw='ist & 10' confirmed='ist & 10' Q3 3:17
+frame 10425 (695.0s): raw='ist & 10' confirmed='ist & 10' Q3 3:16
+frame 10440 (696.0s): raw='ist & 10' confirmed='ist & 10' Q3 3:15
+frame 10455 (697.0s): raw='ist & 10' confirmed='ist & 10' Q3 3:14
+frame 10470 (698.0s): raw='ist & 10' confirmed='ist & 10' Q3 3:13
+frame 10485 (699.0s): raw='ist & 10' confirmed='ist & 10' Q3 3:12
+frame 10500 (700.0s): raw='ist & 10' confirmed='ist & 10' Q3 2:48
+frame 10515 (701.0s): raw='ist & 10' confirmed='ist & 10' Q3 2:47
+frame 10530 (702.0s): raw='ist & 10' confirmed='ist & 10' Q3 2:46
+frame 10545 (703.0s): raw='ist & 10' confirmed='ist & 10' Q3 2:45
+frame 10560 (704.0s): raw='ist & 10' confirmed='ist & 10' Q3 2:44
+frame 10575 (705.0s): raw='ist & 10' confirmed='ist & 10' Q3 2:43
+frame 10590 (706.0s): raw='ist & 10' confirmed='ist & 10' Q3 2:43
+frame 10605 (707.0s): raw='ist & 10' confirmed='ist & 10' Q3 2:42
+frame 10620 (708.0s): raw='ist & 10' confirmed='ist & 10' Q3 2:41
+frame 10635 (709.0s): raw='ist & 10' confirmed='ist & 10' Q3 2:40
+frame 10650 (710.0s): raw='ist & 10' confirmed='ist & 10' Q3 2:39
+frame 10665 (711.0s): raw='ist & 10' confirmed='ist & 10' Q3 2:38
+frame 10680 (712.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 10695 (713.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 10710 (714.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 10725 (715.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 10740 (716.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 10755 (717.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 10770 (718.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 10785 (719.0s): raw='3rd & 10' confirmed='ist & 10' Q3 2:17
+frame 10800 (720.0s): raw='3rd & 10' confirmed='3rd & 10' Q3 2:16 <-- CONFIRMED BOUNDARY
+frame 10815 (721.0s): raw='3rd & 10' confirmed='3rd & 10' Q3 2:15
+frame 10830 (722.0s): raw='3rd & 10' confirmed='3rd & 10' Q3 2:14
+frame 10845 (723.0s): raw='3rd & 10' confirmed='3rd & 10' Q3 2:14
+frame 10860 (724.0s): raw='3rd & 10' confirmed='3rd & 10' Q3 2:13
+frame 10875 (725.0s): raw='3rd & 10' confirmed='3rd & 10' Q3 2:12
+frame 10890 (726.0s): raw='3rd & 10' confirmed='3rd & 10' Q3 2:11
+frame 10905 (727.0s): raw='3rd & 10' confirmed='3rd & 10' Q3 2:10
+frame 10920 (728.0s): raw='3rd & 10' confirmed='3rd & 10' Q3 2:09
+frame 10935 (729.0s): raw='3rd & 10' confirmed='3rd & 10' Q3 2:08
+frame 10950 (730.0s): raw='3rd & 10' confirmed='3rd & 10' Q3 2:07
+frame 10965 (731.0s): raw='3rd & 10' confirmed='3rd & 10' Q3 2:06
+frame 10980 (732.0s): raw=None confirmed='3rd & 10' Q3 2:05
+frame 10995 (733.0s): raw=None confirmed=None Q3 2:05
+frame 11010 (734.0s): raw=None confirmed=None Q3 2:04
+frame 11025 (735.0s): raw=None confirmed=None Q3 2:03
+frame 11040 (736.0s): raw=None confirmed=None Q3 2:02
+frame 11055 (737.0s): raw=None confirmed=None Q3 2:02
+frame 11070 (738.0s): raw=None confirmed=None Q3 2:02
+frame 11085 (739.0s): raw=None confirmed=None Q3 2:02
+frame 11100 (740.0s): raw=None confirmed=None Q3 2:02
+frame 11115 (741.0s): raw='ist & 10' confirmed=None clock=None
+frame 11130 (742.0s): raw='ist & 10' confirmed='ist & 10' clock=None <-- CONFIRMED BOUNDARY
+frame 11145 (743.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 11160 (744.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 11175 (745.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 11190 (746.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 11205 (747.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 11220 (748.0s): raw='ist & 10' confirmed='ist & 10' Q3 1:19
+frame 11235 (749.0s): raw='3rd & 30' confirmed='ist & 10' Q3 0:34
+frame 11250 (750.0s): raw='3rd & 3' confirmed='ist & 10' Q3 0:34
+frame 11265 (751.0s): raw='3rd & 3' confirmed='3rd & 3' Q3 0:34 <-- CONFIRMED BOUNDARY
+frame 11280 (752.0s): raw='3rd & 30' confirmed='3rd & 3' Q3 0:33
+frame 11295 (753.0s): raw='3rd & 30' confirmed='3rd & 30' Q3 0:33 <-- CONFIRMED BOUNDARY
+frame 11310 (754.0s): raw='3rd & 3' confirmed='3rd & 30' Q3 0:32
+frame 11325 (755.0s): raw='3rd & 30' confirmed='3rd & 30' Q3 0:31
+frame 11340 (756.0s): raw='3rd & 30' confirmed='3rd & 30' Q3 0:30
+frame 11355 (757.0s): raw='3rd & 30' confirmed='3rd & 30' Q3 0:29
+frame 11370 (758.0s): raw='3rd & 30' confirmed='3rd & 30' Q3 0:29
+frame 11385 (759.0s): raw='3rd & 30' confirmed='3rd & 30' Q3 0:29
+frame 11400 (760.0s): raw='3rd & 30' confirmed='3rd & 30' Q3 0:29
+frame 11415 (761.0s): raw='3rd & 30' confirmed='3rd & 30' Q3 0:29
+frame 11430 (762.0s): raw='3rd & 30' confirmed='3rd & 30' Q3 0:29
+frame 11445 (763.0s): raw=None confirmed='3rd & 30' clock=None
+frame 11460 (764.0s): raw=None confirmed=None clock=None
+frame 11475 (765.0s): raw=None confirmed=None clock=None
+frame 11490 (766.0s): raw=None confirmed=None clock=None
+frame 11505 (767.0s): raw=None confirmed=None clock=None
+frame 11520 (768.0s): raw=None confirmed=None clock=None
+frame 11535 (769.0s): raw=None confirmed=None clock=None
+frame 11550 (770.0s): raw=None confirmed=None clock=None
+frame 11565 (771.0s): raw=None confirmed=None clock=None
+frame 11580 (772.0s): raw=None confirmed=None clock=None
+frame 11595 (773.0s): raw=None confirmed=None clock=None
+frame 11610 (774.0s): raw=None confirmed=None clock=None
+frame 11625 (775.0s): raw=None confirmed=None clock=None
+frame 11640 (776.0s): raw='3rd & 7' confirmed=None Q4 13:50
+frame 11655 (777.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:49 <-- CONFIRMED BOUNDARY
+frame 11670 (778.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:48
+frame 11685 (779.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:47
+frame 11700 (780.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:47
+frame 11715 (781.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:46
+frame 11730 (782.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:45
+frame 11745 (783.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:44
+frame 11760 (784.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:43
+frame 11775 (785.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:42
+frame 11790 (786.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:42
+frame 11805 (787.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:42
+frame 11820 (788.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:42
+frame 11835 (789.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:42
+frame 11850 (790.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:42
+frame 11865 (791.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:42
+frame 11880 (792.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:42
+frame 11895 (793.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:42
+frame 11910 (794.0s): raw='3rd & 7' confirmed='3rd & 7' Q4 13:42
+frame 11925 (795.0s): raw='ist & 10' confirmed='3rd & 7' Q4 13:29
+frame 11940 (796.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:29 <-- CONFIRMED BOUNDARY
+frame 11955 (797.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 11970 (798.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:27
+frame 11985 (799.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:26
+frame 12000 (800.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 12015 (801.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:24
+frame 12030 (802.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 12045 (803.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 12060 (804.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 12075 (805.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:20
+frame 12090 (806.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:20
+frame 12105 (807.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:19
+frame 12120 (808.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:18
+frame 12135 (809.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:17
+frame 12150 (810.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:16
+frame 12165 (811.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:15
+frame 12180 (812.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:14
+frame 12195 (813.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:13
+frame 12210 (814.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:31
+frame 12225 (815.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:30
+frame 12240 (816.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 12255 (817.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:28
+frame 12270 (818.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:28
+frame 12285 (819.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:27
+frame 12300 (820.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:26
+frame 12315 (821.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 12330 (822.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:24
+frame 12345 (823.0s): raw='ist & 10' confirmed='ist & 10' clock=None
+frame 12360 (824.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:22
+frame 12375 (825.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:21
+frame 12390 (826.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:20
+frame 12405 (827.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:19
+frame 12420 (828.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:19
+frame 12435 (829.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:18
+frame 12450 (830.0s): raw='ist & 10' confirmed='ist & 10' Q4 13:17
+frame 12465 (831.0s): raw=None confirmed='ist & 10' clock=None
+frame 12480 (832.0s): raw=None confirmed=None clock=None
+frame 12495 (833.0s): raw=None confirmed=None clock=None
+frame 12510 (834.0s): raw='ist & goal' confirmed=None Q4 13:09
+frame 12525 (835.0s): raw='ist & goal' confirmed='ist & goal' Q4 13:09 <-- CONFIRMED BOUNDARY
+frame 12540 (836.0s): raw='ist & goal' confirmed='ist & goal' Q4 13:09
+frame 12555 (837.0s): raw='ist & goal' confirmed='ist & goal' Q4 13:08
+frame 12570 (838.0s): raw='ist & goal' confirmed='ist & goal' Q4 13:07
+frame 12585 (839.0s): raw='ist & goal' confirmed='ist & goal' Q4 13:06
+frame 12600 (840.0s): raw='ist & goal' confirmed='ist & goal' Q4 13:05
+frame 12615 (841.0s): raw='ist & goal' confirmed='ist & goal' Q4 13:05
+frame 12630 (842.0s): raw='ist & goal' confirmed='ist & goal' Q4 13:04
+frame 12645 (843.0s): raw='ist & goal' confirmed='ist & goal' Q4 13:03
+frame 12660 (844.0s): raw='ist & goal' confirmed='ist & goal' Q4 13:02
+frame 12675 (845.0s): raw='ist & goal' confirmed='ist & goal' Q4 13:01
+frame 12690 (846.0s): raw='ist & goal' confirmed='ist & goal' Q4 13:00
+frame 12705 (847.0s): raw='ist & goal' confirmed='ist & goal' Q4 12:59
+frame 12720 (848.0s): raw=None confirmed='ist & goal' Q4 12:35
+frame 12735 (849.0s): raw=None confirmed=None Q4 12:34
+frame 12750 (850.0s): raw=None confirmed=None Q4 12:33
+frame 12765 (851.0s): raw=None confirmed=None Q4 12:32
+frame 12780 (852.0s): raw=None confirmed=None Q4 12:31
+frame 12795 (853.0s): raw=None confirmed=None Q4 12:30
+frame 12810 (854.0s): raw=None confirmed=None Q4 12:30
+frame 12825 (855.0s): raw=None confirmed=None Q4 12:29
+frame 12840 (856.0s): raw=None confirmed=None Q4 12:28
+frame 12855 (857.0s): raw=None confirmed=None Q4 12:27
+frame 12870 (858.0s): raw=None confirmed=None Q4 12:27
+frame 12885 (859.0s): raw=None confirmed=None Q4 12:27
+frame 12900 (860.0s): raw=None confirmed=None clock=None
+frame 12915 (861.0s): raw=None confirmed=None clock=None
+frame 12930 (862.0s): raw=None confirmed=None clock=None
+frame 12945 (863.0s): raw=None confirmed=None clock=None
+frame 12960 (864.0s): raw=None confirmed=None clock=None
+frame 12975 (865.0s): raw=None confirmed=None clock=None
+frame 12990 (866.0s): raw=None confirmed=None clock=None
+frame 13005 (867.0s): raw=None confirmed=None clock=None
+frame 13020 (868.0s): raw=None confirmed=None clock=None
+frame 13035 (869.0s): raw=None confirmed=None clock=None
+frame 13050 (870.0s): raw=None confirmed=None clock=None
+frame 13065 (871.0s): raw=None confirmed=None clock=None
+frame 13080 (872.0s): raw=None confirmed=None clock=None
+frame 13095 (873.0s): raw=None confirmed=None Q4 12:27
+frame 13110 (874.0s): raw=None confirmed=None Q4 12:27
+frame 13125 (875.0s): raw=None confirmed=None Q4 12:27
+frame 13140 (876.0s): raw=None confirmed=None Q4 12:27
+frame 13155 (877.0s): raw=None confirmed=None Q4 12:27
+frame 13170 (878.0s): raw=None confirmed=None Q4 12:27
+frame 13185 (879.0s): raw=None confirmed=None Q4 12:27
+frame 13200 (880.0s): raw=None confirmed=None Q4 12:27
+frame 13215 (881.0s): raw=None confirmed=None Q4 12:27
+frame 13230 (882.0s): raw=None confirmed=None Q4 12:27
+frame 13245 (883.0s): raw=None confirmed=None Q4 12:27
+frame 13260 (884.0s): raw=None confirmed=None Q4 12:27
+frame 13275 (885.0s): raw=None confirmed=None Q4 12:27
+frame 13290 (886.0s): raw=None confirmed=None Q4 12:27
+frame 13305 (887.0s): raw=None confirmed=None Q4 12:27
+frame 13320 (888.0s): raw=None confirmed=None Q4 12:27
+frame 13335 (889.0s): raw=None confirmed=None Q4 12:27
+frame 13350 (890.0s): raw=None confirmed=None Q4 12:27
+frame 13365 (891.0s): raw=None confirmed=None Q4 12:27
+frame 13380 (892.0s): raw='3rd & 2' confirmed=None clock=None
+frame 13395 (893.0s): raw='3rd & 2' confirmed='3rd & 2' Q4 9:28 <-- CONFIRMED BOUNDARY
+frame 13410 (894.0s): raw='3rd & 2' confirmed='3rd & 2' Q4 9:27
+frame 13425 (895.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 13440 (896.0s): raw='3rd & 2' confirmed='3rd & 2' Q4 9:25
+frame 13455 (897.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 13470 (898.0s): raw='3rd & 2' confirmed='3rd & 2' Q4 9:23
+frame 13485 (899.0s): raw='3rd & 2' confirmed='3rd & 2' Q4 9:22
+frame 13500 (900.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 13515 (901.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 13530 (902.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 13545 (903.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 13560 (904.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 13575 (905.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 13590 (906.0s): raw='3rd & 2' confirmed='3rd & 2' Q4 9:16
+frame 13605 (907.0s): raw='3rd & 2' confirmed='3rd & 2' clock=None
+frame 13620 (908.0s): raw='ist & 10' confirmed='3rd & 2' Q4 8:44
+frame 13635 (909.0s): raw='ist & 10' confirmed='ist & 10' Q4 8:43 <-- CONFIRMED BOUNDARY
+frame 13650 (910.0s): raw='ist & 10' confirmed='ist & 10' Q4 8:42
+
+=== Candidate boundaries (down & distance changed) ===
+  frame 975 (65.0s): ist & 10 [clock=None]
+  frame 1845 (123.0s): 3rd & 8 [clock=None]
+  frame 2385 (159.0s): ist & 10 [clock=None]
+  frame 2835 (189.0s): ist & 10 [Q1 4:54]
+  frame 3585 (239.0s): 3rd & 15 [Q1 2:59]
+  frame 4140 (276.0s): ist & 10 [clock=None]
+  frame 4830 (322.0s): ist & goal [clock=None]
+  frame 5085 (339.0s): ist & 10 [clock=None]
+  frame 5325 (355.0s): 3rd & 12 [clock=None]
+  frame 5535 (369.0s): 4th & 4 [clock=None]
+  frame 5700 (380.0s): 3rd & 3 [clock=None]
+  frame 5925 (395.0s): ist & 10 [clock=None]
+  frame 6435 (429.0s): ist & 10 [clock=None]
+  frame 7125 (475.0s): 3rd & 20 [clock=None]
+  frame 7335 (489.0s): ist & 10 [Q3 15:00]
+  frame 7920 (528.0s): ist & 10 [Q3 12:59]
+  frame 8205 (547.0s): ist & goal [Q3 12:10]
+  frame 9645 (643.0s): 3rd & 2 [Q3 7:09]
+  frame 9885 (659.0s): 4th & 2 [clock=None]
+  frame 9915 (661.0s): 3rd & 5 [clock=None]
+  frame 10320 (688.0s): ist & 10 [clock=None]
+  frame 10800 (720.0s): 3rd & 10 [Q3 2:16]
+  frame 11130 (742.0s): ist & 10 [clock=None]
+  frame 11265 (751.0s): 3rd & 3 [Q3 0:34]
+  frame 11295 (753.0s): 3rd & 30 [Q3 0:33]
+  frame 11655 (777.0s): 3rd & 7 [Q4 13:49]
+  frame 11940 (796.0s): ist & 10 [Q4 13:29]
+  frame 12525 (835.0s): ist & goal [Q4 13:09]
+  frame 13395 (893.0s): 3rd & 2 [Q4 9:28]
+  frame 13635 (909.0s): ist & 10 [Q4 8:43]
+
+Total candidate boundaries: 30
+
+=== Replay-rejection pass (game clock must not move backward) ===
+Kept: 30, rejected as likely replays: 0
+EXIT=0
