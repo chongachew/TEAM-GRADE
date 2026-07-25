@@ -1,15 +1,24 @@
 """
-Phase A validation - combine the OCR and tracking-based candidate signals
-into one merged list (union, deduplicated), then score the combination
-against the same ground truth used to score each signal individually.
+Phase A validation - combine any number of candidate boundary signals into
+one merged list (union, deduplicated), then score the combination against
+the same ground truth used to score each signal individually.
 
-Usage: python combine_candidates.py <ocr_log> <tracking_log> <ground_truth.json>
+Generalized (see adaptive-finding-planet.md, Step 4) from an original
+2-source-only (OCR + tracking) version to accept N sources, since Phase A's
+extension added two more cheap candidates (detection-pile-centroid-motion,
+formation-shape) plus camera-motion.
+
+Usage: python combine_candidates.py <ground_truth.json> <ocr_log> <frame_style_log> [<frame_style_log> ...]
+  <ocr_log>: play_boundary_validation.py's stdout (parsed via parse_ocr_candidates)
+  <frame_style_log>: any script whose stdout has "frame N (T.Ts)" lines
+    (snap_detector.py, detection_pile_motion.py, formation_signal.py,
+    camera_motion_candidates.py all already match this format) - one or more
 """
 
 import re
 import sys
 
-DEDUP_WINDOW_SECONDS = 5.0  # candidates from the two signals within this window
+DEDUP_WINDOW_SECONDS = 5.0  # candidates from different signals within this window
                              # of each other are treated as the same real play,
                              # not counted twice
 
@@ -26,16 +35,19 @@ def parse_ocr_candidates(path):
 
 
 def parse_tracking_candidates(path):
-    """Parses snap_detector.py's "frame N (T.Ts)" output lines."""
+    """Parses any "frame N (T.Ts)"-style stdout - shared by snap_detector.py,
+    detection_pile_motion.py, formation_signal.py, and
+    camera_motion_candidates.py."""
     with open(path) as f:
         text = f.read()
     return [float(m) for m in re.findall(r"frame \d+ \((\d+\.\d+)s\)", text)]
 
 
-def merge_and_dedup(list_a, list_b, window=DEDUP_WINDOW_SECONDS):
-    """Union of both lists, merging any two candidates within `window`
-    seconds of each other into one (keeps the earlier timestamp)."""
-    combined = sorted(list_a + list_b)
+def merge_and_dedup(*candidate_lists, window=DEDUP_WINDOW_SECONDS):
+    """Union of any number of candidate lists, merging any two candidates
+    within `window` seconds of each other into one (keeps the earlier
+    timestamp)."""
+    combined = sorted(t for lst in candidate_lists for t in lst)
     merged = []
     for t in combined:
         if merged and t - merged[-1] <= window:
@@ -45,14 +57,19 @@ def merge_and_dedup(list_a, list_b, window=DEDUP_WINDOW_SECONDS):
 
 
 if __name__ == "__main__":
-    ocr_log, tracking_log, ground_truth_path = sys.argv[1], sys.argv[2], sys.argv[3]
+    ground_truth_path, ocr_log = sys.argv[1], sys.argv[2]
+    frame_style_logs = sys.argv[3:]
+    if not frame_style_logs:
+        print("Usage: python combine_candidates.py <ground_truth.json> <ocr_log> <frame_style_log> [<frame_style_log> ...]")
+        sys.exit(1)
 
     ocr_candidates = parse_ocr_candidates(ocr_log)
-    tracking_candidates = parse_tracking_candidates(tracking_log)
-    merged = merge_and_dedup(ocr_candidates, tracking_candidates)
+    frame_style_candidate_lists = [parse_tracking_candidates(log) for log in frame_style_logs]
+    merged = merge_and_dedup(ocr_candidates, *frame_style_candidate_lists)
 
     print(f"OCR candidates: {len(ocr_candidates)}")
-    print(f"Tracking candidates: {len(tracking_candidates)}")
+    for log, cands in zip(frame_style_logs, frame_style_candidate_lists):
+        print(f"{log}: {len(cands)} candidates")
     print(f"Merged (deduped within {DEDUP_WINDOW_SECONDS}s): {len(merged)}")
     print()
 
