@@ -413,7 +413,7 @@ class QueueManager:
             logger.error(f"Failed to get queue stats: {e}")
             return {"queued": 0, "processing": 0, "total": 0}
 
-    def cleanup_stalled_items(self, timeout_minutes: int = 30) -> int:
+    def cleanup_stalled_items(self, timeout_minutes: int = 30, stage_timeouts: Optional[Dict[str, int]] = None) -> int:
         """
         Clean up items that have been "processing" too long by requeueing
         them - a real Postgres backend makes this a plain conditional UPDATE
@@ -422,24 +422,52 @@ class QueueManager:
         extra indexes it never had).
 
         Args:
-            timeout_minutes: Minutes after which to consider item stalled
+            timeout_minutes: Minutes after which to consider item stalled -
+                applies to every stage NOT listed in stage_timeouts.
+            stage_timeouts: Optional per-stage override, e.g.
+                {"detection": 120, "tracking": 120}. Real GPU-dispatched
+                stages can legitimately run far longer than a CPU stage ever
+                would (tracking on a real video was observed taking ~84
+                minutes) - a single global timeout previously declared a
+                genuinely-still-running Batch job "stalled" and resubmitted
+                it as a duplicate, wasting real GPU compute while the
+                original job kept running to completion anyway (Batch jobs
+                aren't cancelled just because the queue considers them
+                stalled - only the queue item's own status changes).
 
         Returns:
             Number of items cleaned up
         """
+        stage_timeouts = stage_timeouts or {}
         try:
-            cutoff = _now() - timedelta(minutes=timeout_minutes)
-            logger.info(f"Cleaning up items stalled since {cutoff}")
+            total = 0
             with self.engine.begin() as conn:
+                for stage_name, stage_timeout in stage_timeouts.items():
+                    cutoff = _now() - timedelta(minutes=stage_timeout)
+                    result = conn.execute(
+                        sa_update(ingestion_queue)
+                        .where(ingestion_queue.c.status == "processing")
+                        .where(ingestion_queue.c.stage == stage_name)
+                        .where(ingestion_queue.c.processing_started_at < cutoff)
+                        .values(status="queued", updated_at=_now())
+                    )
+                    total += result.rowcount or 0
+
+                default_cutoff = _now() - timedelta(minutes=timeout_minutes)
                 result = conn.execute(
                     sa_update(ingestion_queue)
                     .where(ingestion_queue.c.status == "processing")
-                    .where(ingestion_queue.c.processing_started_at < cutoff)
+                    .where(ingestion_queue.c.stage.notin_(list(stage_timeouts.keys())) if stage_timeouts else True)
+                    .where(ingestion_queue.c.processing_started_at < default_cutoff)
                     .values(status="queued", updated_at=_now())
                 )
-                count = result.rowcount or 0
-            logger.info(f"Stalled item cleanup executed (timeout: {timeout_minutes}m): {count} requeued")
-            return count
+                total += result.rowcount or 0
+
+            logger.info(
+                f"Stalled item cleanup executed (default timeout: {timeout_minutes}m, "
+                f"overrides: {stage_timeouts}): {total} requeued"
+            )
+            return total
         except Exception as e:
             logger.error(f"Failed to cleanup stalled items: {e}")
             return 0

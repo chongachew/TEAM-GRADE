@@ -246,3 +246,47 @@ class TestSkipLockedDequeue:
         assert count == 1
         stats = pg_client.get_queue_status()
         assert stats["queued"] == 1
+
+    def test_cleanup_stalled_items_respects_per_stage_timeout_override(self, pg_client):
+        """Regression test for a real production bug: a single global 30min
+        timeout declared a genuinely-still-running GPU tracking job (observed
+        taking ~84 minutes on real footage) "stalled" and resubmitted it as a
+        duplicate Batch job while the original kept running to completion
+        anyway - wasting real GPU compute. A tracking item backdated 60min
+        must survive a call with stage_timeouts={"tracking": 150}, while a
+        metadata item backdated the same 60min (a real CPU stage with no
+        override) must still get cleaned up under the 30min default."""
+        from ingest.queue_manager import QueueManager
+        from ingest.db_schema import ingestion_queue
+        from datetime import datetime, timezone, timedelta
+
+        tracking_video_id = "stalltest02t"
+        metadata_video_id = "stalltest02m"
+        _insert_video(pg_client, tracking_video_id)
+        _insert_video(pg_client, metadata_video_id)
+
+        qm = QueueManager(pg_client)
+        qm.enqueue_video(tracking_video_id, stage="tracking", priority=5)
+        qm.enqueue_video(metadata_video_id, stage="metadata", priority=5)
+        tracking_item = qm.dequeue_next_video()
+        metadata_item = qm.dequeue_next_video()
+
+        stale_time = datetime.now(timezone.utc) - timedelta(minutes=60)
+        with pg_client.engine.begin() as conn:
+            for item in (tracking_item, metadata_item):
+                conn.execute(
+                    ingestion_queue.update()
+                    .where(ingestion_queue.c.id == int(item["_doc_id"]))
+                    .values(processing_started_at=stale_time)
+                )
+
+        count = qm.cleanup_stalled_items(timeout_minutes=30, stage_timeouts={"tracking": 150})
+        assert count == 1  # only the metadata item, not the tracking item
+
+        with pg_client.engine.connect() as conn:
+            rows = {
+                row["id"]: row["status"]
+                for row in conn.execute(ingestion_queue.select()).mappings()
+            }
+        assert rows[int(tracking_item["_doc_id"])] == "processing"  # protected by the override
+        assert rows[int(metadata_item["_doc_id"])] == "queued"  # cleaned up under the default

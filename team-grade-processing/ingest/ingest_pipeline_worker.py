@@ -211,7 +211,10 @@ class PipelineWorker:
                 try:
                     if iteration % STALL_CLEANUP_EVERY_N_ITERATIONS == 0:
                         try:
-                            requeued = self.queue_manager.cleanup_stalled_items(timeout_minutes=30)
+                            requeued = self.queue_manager.cleanup_stalled_items(
+                                timeout_minutes=30,
+                                stage_timeouts={STAGE_DETECTION: 150, STAGE_TRACKING: 150},
+                            )
                             if requeued:
                                 logger.warning(f"[Iteration {iteration}] Requeued {requeued} stalled item(s)")
                         except Exception as e:
