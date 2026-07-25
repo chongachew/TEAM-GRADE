@@ -24,7 +24,10 @@ logger = logging.getLogger(__name__)
 
 # Stage name constants
 STAGE_NAME = "motion_compensation"
-STAGE_NEXT = "detection"
+# Per-play redesign: play_detection reads the camera_motion rows this stage
+# just wrote (no recomputation needed) to find real play boundaries, then
+# enqueues detection per-play instead of once for the whole video.
+STAGE_NEXT = "play_detection"
 
 
 def run_motion_compensation_stage(

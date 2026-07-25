@@ -290,3 +290,75 @@ class TestSkipLockedDequeue:
             }
         assert rows[int(tracking_item["_doc_id"])] == "processing"  # protected by the override
         assert rows[int(metadata_item["_doc_id"])] == "queued"  # cleaned up under the default
+
+    def test_enqueue_with_different_play_indexes_are_not_deduped_against_each_other(self, pg_client):
+        """Two different real play_index values for the same (video, stage)
+        must both succeed as distinct rows - not deduped against each other.
+        Regression test for the NULL-vs-real-value dedup fix in add_to_queue."""
+        from ingest.queue_manager import QueueManager
+
+        video_id = "playdeduptest01"
+        _insert_video(pg_client, video_id)
+        qm = QueueManager(pg_client)
+
+        assert qm.enqueue_video(video_id, stage="detection", priority=5, play_index=0) is True
+        assert qm.enqueue_video(video_id, stage="detection", priority=5, play_index=1) is True
+
+        stats = pg_client.get_queue_status()
+        assert stats["queued"] == 2
+
+    def test_enqueue_same_play_index_twice_is_deduped(self, pg_client):
+        """Re-enqueueing the exact same (video, stage, play_index) while the
+        first is still queued/processing must be a no-op, matching the
+        existing whole-video dedup behavior."""
+        from ingest.queue_manager import QueueManager
+
+        video_id = "playdeduptest02"
+        _insert_video(pg_client, video_id)
+        qm = QueueManager(pg_client)
+
+        assert qm.enqueue_video(video_id, stage="detection", priority=5, play_index=0) is True
+        assert qm.enqueue_video(video_id, stage="detection", priority=5, play_index=0) is True
+
+        stats = pg_client.get_queue_status()
+        assert stats["queued"] == 1
+
+    def test_dequeue_progresses_two_plays_of_the_same_video_independently(self, pg_client):
+        """A later-STAGE_SEQUENCE job for one play must not be blocked by an
+        earlier-STAGE_SEQUENCE job for a DIFFERENT play of the same video -
+        the actual behavior change dequeue_next_video's new (video_id,
+        play_index) grouping exists for."""
+        from ingest.queue_manager import QueueManager
+
+        video_id = "playindeptest01"
+        _insert_video(pg_client, video_id)
+        qm = QueueManager(pg_client)
+
+        qm.enqueue_video(video_id, stage="detection", priority=5, play_index=0)
+        qm.enqueue_video(video_id, stage="motion_compensation", priority=5, play_index=1)
+
+        item1 = qm.dequeue_next_video()
+        item2 = qm.dequeue_next_video()
+
+        assert item1 is not None and item2 is not None
+        stages_by_play = {item1["play_index"]: item1["stage"], item2["play_index"]: item2["stage"]}
+        assert stages_by_play == {0: "detection", 1: "motion_compensation"}
+
+    def test_dequeue_still_respects_stage_sequence_within_one_play(self, pg_client):
+        """Regression check: a single video/play with both an earlier and
+        later stage queued still only ever surfaces the earlier one - the
+        per-play grouping change must not break the existing single-play
+        (play_index=None) stage-ordering guarantee."""
+        from ingest.queue_manager import QueueManager
+
+        video_id = "playseqtest01"
+        _insert_video(pg_client, video_id)
+        qm = QueueManager(pg_client)
+
+        qm.enqueue_video(video_id, stage="frame_extraction", priority=5)
+        qm.enqueue_video(video_id, stage="download", priority=5)
+
+        item = qm.dequeue_next_video()
+        assert item is not None
+        assert item["stage"] == "download"
+        assert item["play_index"] is None

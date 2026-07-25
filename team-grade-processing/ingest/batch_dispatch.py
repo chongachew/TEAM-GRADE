@@ -29,7 +29,7 @@ def submit_gpu_stage_job(
     video_id: str,
     stage: str,
     queue_doc_id: str,
-    payload: Optional[Dict[str, Any]] = None,
+    play_index: Optional[int] = None,
 ) -> str:
     """Submit one pipeline stage as an AWS Batch job.
 
@@ -39,15 +39,17 @@ def submit_gpu_stage_job(
         queue_doc_id: The dequeued item's queue row ID - the Batch job's own
             entrypoint (run_batch_job.py) uses this to mark the item
             completed/failed once it finishes.
-        payload: Optional stage payload, unused by the job today (stage
-            handlers read their own inputs from Postgres/S3) but forwarded in
-            case a stage starts needing it.
+        play_index: Which play this job is scoped to, or None for
+            whole-video-mode - threaded through to run_batch_job.py via
+            --play-index so the stage handler it runs receives it.
 
     Returns:
         The submitted Batch job ID.
     """
     command = ["python", "run_batch_job.py", "--video-id", video_id, "--stage", stage,
                "--queue-doc-id", queue_doc_id]
+    if play_index is not None:
+        command += ["--play-index", str(play_index)]
 
     response = _get_batch_client().submit_job(
         jobName=f"team-grade-{stage}-{video_id}"[:128],

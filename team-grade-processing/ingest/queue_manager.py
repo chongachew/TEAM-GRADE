@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 _FALLBACK_STAGE_SEQUENCE = [
     "metadata", "download", "authenticity_check", "whistle_detection", "frame_extraction",
-    "motion_compensation", "detection", "tracking", "pose", "torso_crop",
+    "motion_compensation", "play_detection", "detection", "tracking", "pose", "torso_crop",
     "jersey_ocr", "rep_extraction", "biomechanics", "complete",
 ]
 
@@ -65,7 +65,8 @@ class QueueManager:
         video_id: str,
         stage: str = "metadata",
         priority: int = 5,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        play_index: Optional[int] = None,
     ) -> bool:
         """
         Add video to ingestion queue.
@@ -80,24 +81,30 @@ class QueueManager:
             stage: Starting stage
             priority: Priority level (1-10)
             metadata: Optional metadata
+            play_index: Which play this job is scoped to, or None for
+                whole-video-mode (every job before play_detection existed).
+                Lets dequeue_next_video() progress plays of the same video
+                independently instead of the earliest-stage play blocking
+                the rest.
 
         Returns:
             True if successful
         """
         try:
-            logger.info(f"Enqueueing video: {video_id} (priority: {priority})")
+            logger.info(f"Enqueueing video: {video_id} (priority: {priority}, play_index: {play_index})")
 
             if not (1 <= priority <= 10):
                 logger.warning(f"Invalid priority {priority}, using default 5")
                 priority = 5
 
-            success = self.postgres.add_to_queue(video_id, stage, priority, metadata)
+            success = self.postgres.add_to_queue(video_id, stage, priority, metadata, play_index=play_index)
 
             if success:
                 self.local_queue.append({
                     "video_id": video_id,
                     "priority": priority,
                     "stage": stage,
+                    "play_index": play_index,
                     "enqueued_at": _now().isoformat(),
                 })
                 logger.info(f"[OK] Enqueued {video_id}")
@@ -147,14 +154,19 @@ class QueueManager:
                     logger.debug("Queue is empty")
                     return None
 
-                # GROUP by video_id to find next stage for each video
-                videos: Dict[str, List[Dict[str, Any]]] = {}
+                # GROUP by (video_id, play_index) to find next stage for each
+                # video/play independently - two plays of the same video are
+                # separate groups, so an earlier-STAGE_SEQUENCE job for play 0
+                # no longer blocks a later-stage job for play 1. Videos not
+                # yet using plays (play_index always None) still group as one
+                # bucket per video, unchanged from before.
+                videos: Dict[tuple, List[Dict[str, Any]]] = {}
                 for row in rows:
-                    videos.setdefault(row["video_id"], []).append(row)
+                    videos.setdefault((row["video_id"], row["play_index"]), []).append(row)
 
-                # FILTER: for each video, keep only the job at the earliest
-                # stage in STAGE_SEQUENCE (identical logic to the old
-                # FirestoreClient.dequeue_next_video()).
+                # FILTER: for each (video, play), keep only the job at the
+                # earliest stage in STAGE_SEQUENCE (identical logic to the old
+                # FirestoreClient.dequeue_next_video(), now play-scoped).
                 next_stage_items: List[Dict[str, Any]] = []
                 for vid, jobs in videos.items():
                     stages_for_video = [j["stage"] for j in jobs]
@@ -296,6 +308,7 @@ class QueueManager:
                         ingestion_queue.c.stage,
                         ingestion_queue.c.retry_count,
                         ingestion_queue.c.max_retries,
+                        ingestion_queue.c.play_index,
                     )
                     .where(ingestion_queue.c.id == qid)
                     .with_for_update()
@@ -345,13 +358,17 @@ class QueueManager:
                     # stale "pending" status and frozen progress % forever -
                     # from the frontend's perspective a permanently-failed
                     # video looked identical to one still processing.
+                    from ingest.postgres_client import video_stages_conflict_target
+                    index_elements, index_where = video_stages_conflict_target(row["play_index"])
                     video_stage_stmt = pg_insert(video_stages).values(
                         video_id=row["video_id"],
                         stage_name=row["stage"],
                         status="failed",
                         extra={"error": error_message},
+                        play_index=row["play_index"],
                     ).on_conflict_do_update(
-                        index_elements=["video_id", "stage_name"],
+                        index_elements=index_elements,
+                        index_where=index_where,
                         set_={"status": "failed", "extra": {"error": error_message}},
                     )
                     conn.execute(video_stage_stmt)
@@ -570,11 +587,12 @@ def enqueue_video(
     postgres_client,
     video_id: str,
     stage: str = "metadata",
-    priority: int = 5
+    priority: int = 5,
+    play_index: Optional[int] = None,
 ) -> bool:
     """Standalone function to enqueue video."""
     manager = QueueManager(postgres_client)
-    return manager.enqueue_video(video_id, stage, priority)
+    return manager.enqueue_video(video_id, stage, priority, play_index=play_index)
 
 
 def dequeue_next_video(postgres_client) -> Optional[Dict[str, Any]]:

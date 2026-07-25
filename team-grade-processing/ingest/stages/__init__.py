@@ -30,6 +30,10 @@ from .whistle_detection_stage import run_whistle_detection_stage
 from .frame_extraction_stage_gpu import run_frame_extraction_stage
 # Multi-player pivot: motion compensation / detection / tracking, ahead of pose
 from .motion_compensation_stage import run_motion_compensation_stage
+# Per-play redesign: finds real play boundaries (OCR + camera-motion, both
+# already-cheap signals) right after motion_compensation, before detection -
+# so detection/tracking/etc. can eventually run scoped to one play at a time
+from .play_detection_stage import run_play_detection_stage
 from .detection_stage import run_detection_stage
 from .tracking_stage import run_tracking_stage
 # Phase 3 Week 3: Lightweight pose model (2MB, 2x faster)
@@ -51,7 +55,7 @@ _import_from_config = False
 try:
     from config.constants import (
         STAGE_METADATA, STAGE_DOWNLOAD, STAGE_AUTHENTICITY_CHECK, STAGE_WHISTLE_DETECTION, STAGE_FRAME_EXTRACTION,
-        STAGE_MOTION_COMPENSATION, STAGE_DETECTION, STAGE_TRACKING,
+        STAGE_MOTION_COMPENSATION, STAGE_PLAY_DETECTION, STAGE_DETECTION, STAGE_TRACKING,
         STAGE_POSE, STAGE_TORSO_CROP, STAGE_JERSEY_OCR,
         STAGE_REP_EXTRACTION, STAGE_BIOMECHANICS, STAGE_COMPLETE
     )
@@ -66,6 +70,7 @@ except ImportError as e:
     STAGE_WHISTLE_DETECTION = "whistle_detection"
     STAGE_FRAME_EXTRACTION = "frame_extraction"
     STAGE_MOTION_COMPENSATION = "motion_compensation"
+    STAGE_PLAY_DETECTION = "play_detection"
     STAGE_DETECTION = "detection"
     STAGE_TRACKING = "tracking"
     STAGE_POSE = "pose"
@@ -80,7 +85,7 @@ def _validate_stage_constants():
     """Validate all stage name constants are non-empty strings."""
     stages = [
         STAGE_METADATA, STAGE_DOWNLOAD, STAGE_AUTHENTICITY_CHECK, STAGE_WHISTLE_DETECTION, STAGE_FRAME_EXTRACTION,
-        STAGE_MOTION_COMPENSATION, STAGE_DETECTION, STAGE_TRACKING,
+        STAGE_MOTION_COMPENSATION, STAGE_PLAY_DETECTION, STAGE_DETECTION, STAGE_TRACKING,
         STAGE_POSE, STAGE_TORSO_CROP, STAGE_JERSEY_OCR,
         STAGE_REP_EXTRACTION, STAGE_BIOMECHANICS, STAGE_COMPLETE
     ]
@@ -103,6 +108,7 @@ __all__ = [
     "run_whistle_detection_stage",
     "run_frame_extraction_stage",
     "run_motion_compensation_stage",
+    "run_play_detection_stage",
     "run_detection_stage",
     "run_tracking_stage",
     "run_pose_stage",
@@ -118,6 +124,7 @@ __all__ = [
     "STAGE_WHISTLE_DETECTION",
     "STAGE_FRAME_EXTRACTION",
     "STAGE_MOTION_COMPENSATION",
+    "STAGE_PLAY_DETECTION",
     "STAGE_DETECTION",
     "STAGE_TRACKING",
     "STAGE_POSE",
@@ -141,6 +148,7 @@ STAGE_HANDLERS = {
     STAGE_WHISTLE_DETECTION: run_whistle_detection_stage,
     STAGE_FRAME_EXTRACTION: run_frame_extraction_stage,
     STAGE_MOTION_COMPENSATION: run_motion_compensation_stage,
+    STAGE_PLAY_DETECTION: run_play_detection_stage,
     STAGE_DETECTION: run_detection_stage,
     STAGE_TRACKING: run_tracking_stage,
     STAGE_POSE: run_pose_stage,
@@ -174,6 +182,7 @@ STAGE_SEQUENCE = [
     STAGE_WHISTLE_DETECTION,
     STAGE_FRAME_EXTRACTION,
     STAGE_MOTION_COMPENSATION,
+    STAGE_PLAY_DETECTION,
     STAGE_DETECTION,
     STAGE_TRACKING,
     STAGE_POSE,

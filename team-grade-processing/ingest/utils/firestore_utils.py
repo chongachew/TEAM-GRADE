@@ -39,6 +39,7 @@ from ingest.db_schema import (
     detections as detections_table,
     tracks as tracks_table,
     tracks_meta as tracks_meta_table,
+    plays as plays_table,
 )
 from ingest.postgres_client import upsert_stage_fields, upsert_row_nullable_track
 
@@ -57,6 +58,7 @@ COLLECTION_DETECTIONS = "detections"
 COLLECTION_TRACKS = "tracks"
 COLLECTION_TRACKS_META = "tracks_meta"
 COLLECTION_WHISTLE_EVENTS = "whistle_events"
+COLLECTION_PLAYS = "plays"
 
 
 def get_utc_timestamp() -> str:
@@ -397,6 +399,68 @@ def write_camera_motion_batch(
         return 0
 
 
+def write_plays_batch(
+    firestore_client,
+    video_id: str,
+    play_docs: List[Dict[str, Any]],
+) -> int:
+    """Write play_detection's discovered play ranges to Postgres.
+    Idempotent on (video_id, play_index), so a stage retry re-writes the
+    same rows rather than accumulating duplicates.
+
+    Args:
+        firestore_client: PostgresClient instance
+        video_id: YouTube video ID (will be sanitized)
+        play_docs: List of dicts with keys: play_index, start_frame,
+            end_frame, status, detection_method, confidence (optional)
+
+    Returns:
+        Number of rows written
+
+    Raises:
+        ValueError: If video_id is invalid
+    """
+    try:
+        safe_id = settings.sanitize_id(video_id)
+        engine = firestore_client.engine
+        written = 0
+
+        with engine.begin() as conn:
+            for doc in play_docs:
+                if "play_index" not in doc:
+                    raise ValueError(f"Play doc missing 'play_index': {doc}")
+                row = {
+                    "video_id": safe_id,
+                    "play_index": doc["play_index"],
+                    "start_frame": doc["start_frame"],
+                    "end_frame": doc["end_frame"],
+                    "status": doc.get("status"),
+                    "detection_method": doc.get("detection_method"),
+                    "confidence": doc.get("confidence"),
+                    "created_at": get_utc_timestamp(),
+                }
+                stmt = pg_insert(plays_table).values(**row)
+                update_cols = {
+                    k: getattr(stmt.excluded, k) for k in row
+                    if k not in ("video_id", "play_index", "created_at")
+                }
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["video_id", "play_index"], set_=update_cols
+                )
+                conn.execute(stmt)
+                written += 1
+
+        logger.info(f"[PG] Wrote {written} plays rows for {safe_id}")
+        return written
+
+    except ValueError as e:
+        logger.error(f"[PG] Invalid input: {e}")
+        return 0
+    except Exception as e:
+        logger.error(f"[PG] Failed to write plays batch: {e}")
+        return 0
+
+
 def write_whistle_events_batch(
     firestore_client,
     video_id: str,
@@ -673,7 +737,8 @@ def update_stage_status(
     video_id: str,
     stage_name: str,
     status: str,
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None,
+    play_index: Optional[int] = None,
 ) -> bool:
     """Update stage status for a video's video_stages row.
 
@@ -683,6 +748,8 @@ def update_stage_status(
         stage_name: Stage name (e.g., "download", "pose")
         status: Status ("pending", "completed", "failed", "skipped")
         metadata: Additional metadata to store
+        play_index: Which play this stage attempt belongs to, or None for
+            whole-video-mode (see postgres_client.video_stages_conflict_target)
 
     Returns:
         True if successful
@@ -711,6 +778,7 @@ def update_stage_status(
 
         with firestore_client.engine.begin() as conn:
             from ingest.db_schema import video_stages as video_stages_table
+            from ingest.postgres_client import video_stages_conflict_target
             row = {
                 "video_id": safe_id,
                 "stage_name": stage_name,
@@ -719,11 +787,13 @@ def update_stage_status(
                 "started_at": known_fields.get("started_at"),
                 "completed_at": known_fields.get("completed_at"),
                 "extra": extra_fields,
+                "play_index": play_index,
             }
             stmt = pg_insert(video_stages_table).values(**row)
             update_cols = {k: getattr(stmt.excluded, k) for k in ("status", "completed_at", "extra")}
+            index_elements, index_where = video_stages_conflict_target(play_index)
             stmt = stmt.on_conflict_do_update(
-                index_elements=["video_id", "stage_name"], set_=update_cols
+                index_elements=index_elements, index_where=index_where, set_=update_cols
             )
             conn.execute(stmt)
 
@@ -781,7 +851,8 @@ def write_jersey_number(
 def mark_stage_attempt(
     firestore_client,
     video_id: str,
-    stage_name: str
+    stage_name: str,
+    play_index: Optional[int] = None,
 ) -> bool:
     """Mark a stage attempt (for retry tracking) - increments video_stages.attempt.
 
@@ -789,6 +860,8 @@ def mark_stage_attempt(
         firestore_client: PostgresClient instance
         video_id: YouTube video ID (will be sanitized)
         stage_name: Stage name
+        play_index: Which play this attempt belongs to, or None for
+            whole-video-mode (see postgres_client.video_stages_conflict_target)
 
     Returns:
         True if successful
@@ -799,14 +872,17 @@ def mark_stage_attempt(
     try:
         safe_id = settings.sanitize_id(video_id)
         from ingest.db_schema import video_stages as video_stages_table
+        from ingest.postgres_client import video_stages_conflict_target
 
         with firestore_client.engine.begin() as conn:
             stmt = pg_insert(video_stages_table).values(
                 video_id=safe_id, stage_name=stage_name, status=None, attempt=1,
-                started_at=None, completed_at=None, extra={},
+                started_at=None, completed_at=None, extra={}, play_index=play_index,
             )
+            index_elements, index_where = video_stages_conflict_target(play_index)
             stmt = stmt.on_conflict_do_update(
-                index_elements=["video_id", "stage_name"],
+                index_elements=index_elements,
+                index_where=index_where,
                 set_={"attempt": video_stages_table.c.attempt + 1},
             )
             conn.execute(stmt)

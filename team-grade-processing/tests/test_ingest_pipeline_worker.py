@@ -90,7 +90,7 @@ class TestGpuBatchRouting:
 
         worker.process_queue_item({"video_id": "v1", "stage": "detection", "_doc_id": "d1"})
 
-        submit_mock.assert_called_once_with("v1", "detection", "d1", None)
+        submit_mock.assert_called_once_with("v1", "detection", "d1", play_index=None)
         process_stage_mock.assert_not_called()
 
     def test_batch_item_is_left_unfinalized_for_the_batch_job_to_close_out(self, monkeypatch):

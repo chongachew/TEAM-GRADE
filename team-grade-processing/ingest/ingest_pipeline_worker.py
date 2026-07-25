@@ -304,7 +304,7 @@ class PipelineWorker:
         if not force_inline and stage in (STAGE_DETECTION, STAGE_TRACKING) and settings.GPU_BATCH_ENABLED:
             try:
                 job_id = submit_gpu_stage_job(
-                    video_id, stage, queue_doc_id, queue_item.get("payload")
+                    video_id, stage, queue_doc_id, play_index=queue_item.get("play_index")
                 )
                 logger.info(f"{log_prefix}[{video_id}] Submitted {stage} to AWS Batch: job {job_id}")
             except Exception as e:
@@ -363,8 +363,16 @@ class PipelineWorker:
                 # Fail immediately for config errors; don't retry
                 return False, error_msg
 
-            # Extract payload
+            # Extract payload. queue_item's play_index (a real column once
+            # play_detection populates it, None for whole-video-mode jobs)
+            # is merged in directly here rather than through the "payload"
+            # JSONB key - queue_item never actually has a "payload" key
+            # today (a known pre-existing inconsistency, not fixed here),
+            # but play_index is a real column so this always works.
             payload = queue_item.get("payload", {})
+            play_index = queue_item.get("play_index")
+            if play_index is not None:
+                payload = {**payload, "play_index": play_index}
 
             logger.info(
                 f"[{safe_video_id}] Executing stage handler: {stage}"
@@ -375,7 +383,7 @@ class PipelineWorker:
                 try:
                     # Mark attempt (non-critical, log warning if fails)
                     try:
-                        mark_stage_attempt(self.firestore, safe_video_id, stage)
+                        mark_stage_attempt(self.firestore, safe_video_id, stage, play_index=play_index)
                     except Exception as e:
                         logger.warning(
                             f"[{safe_video_id}][{stage}] Failed to mark attempt: {e}"

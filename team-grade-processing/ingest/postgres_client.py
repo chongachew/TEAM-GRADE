@@ -49,6 +49,7 @@ from ingest.db_schema import (
     detections,
     tracks,
     tracks_meta,
+    plays,
     normalize_database_url,
 )
 
@@ -74,6 +75,7 @@ SUBCOLLECTION_TABLES = {
     "detections": detections,
     "tracks": tracks,
     "tracks_meta": tracks_meta,
+    "plays": plays,
 }
 
 # Tables where track_id is nullable and participates in a uniqueness tuple -
@@ -104,7 +106,31 @@ def make_engine(database_url: Optional[str] = None):
     return create_engine(normalize_database_url(url), poolclass=QueuePool, pool_pre_ping=True, future=True)
 
 
-def upsert_stage_fields(conn, video_id: str, stage_name: str, fields: Dict[str, Any]) -> None:
+def video_stages_conflict_target(play_index: Optional[int] = None):
+    """Which video_stages ON CONFLICT arbiter to target - the partial
+    "...WHERE play_index IS NULL" index (whole-video-mode rows, every video
+    before the per-play redesign and any video where play_detection found no
+    boundaries) or the full 3-column composite constraint (real per-play
+    rows). Postgres never treats two NULLs as conflicting under a plain
+    multi-column UNIQUE constraint, so a play_index-unaware ON CONFLICT would
+    insert a duplicate row on every whole-video-mode upsert instead of
+    updating in place - mirrors upsert_row_nullable_track's identical
+    branching for nullable track_id below.
+
+    Returns (index_elements, index_where) - index_where is None for the
+    real-play_index case, since the full composite constraint isn't partial.
+    Shared by every ON CONFLICT call site against video_stages:
+    upsert_stage_fields (this module), queue_manager.mark_failed,
+    firestore_utils.update_stage_status, firestore_utils.mark_stage_attempt.
+    """
+    if play_index is None:
+        return ["video_id", "stage_name"], video_stages.c.play_index.is_(None)
+    return ["video_id", "stage_name", "play_index"], None
+
+
+def upsert_stage_fields(
+    conn, video_id: str, stage_name: str, fields: Dict[str, Any], play_index: Optional[int] = None
+) -> None:
     """Partial-update (or create) one video_stages row, matching Firestore's
     per-leaf-field update({"stages.<stage>.<field>": value, ...}) semantics:
     only the given fields change, sibling fields already on the row (e.g. an
@@ -121,6 +147,7 @@ def upsert_stage_fields(conn, video_id: str, stage_name: str, fields: Dict[str, 
         "started_at": known.get("started_at"),
         "completed_at": known.get("completed_at"),
         "extra": extra,
+        "play_index": play_index,
     }
     stmt = pg_insert(video_stages).values(**insert_values)
 
@@ -128,12 +155,13 @@ def upsert_stage_fields(conn, video_id: str, stage_name: str, fields: Dict[str, 
     if extra:
         update_cols["extra"] = func.coalesce(video_stages.c.extra, text("'{}'::jsonb")).op("||")(stmt.excluded.extra)
 
+    index_elements, index_where = video_stages_conflict_target(play_index)
     if update_cols:
         stmt = stmt.on_conflict_do_update(
-            index_elements=["video_id", "stage_name"], set_=update_cols
+            index_elements=index_elements, index_where=index_where, set_=update_cols
         )
     else:
-        stmt = stmt.on_conflict_do_nothing(index_elements=["video_id", "stage_name"])
+        stmt = stmt.on_conflict_do_nothing(index_elements=index_elements, index_where=index_where)
     conn.execute(stmt)
 
 
@@ -368,19 +396,31 @@ class PostgresClient:
             logger.error(f"Failed to check queue integrity for {video_id}: {e}")
             return {"video_exists": False, "queue_exists": False, "status": None, "stage": None, "error": str(e)}
 
-    def add_to_queue(self, video_id: str, stage, priority: int = 5, metadata: Optional[Dict[str, Any]] = None) -> bool:
+    def add_to_queue(
+        self, video_id: str, stage, priority: int = 5, metadata: Optional[Dict[str, Any]] = None,
+        play_index: Optional[int] = None,
+    ) -> bool:
         try:
             stage_str = stage.value if hasattr(stage, "value") else str(stage)
+            # SQL NULL is never equal to NULL, so a naive == comparison would
+            # never match an existing play_index=None row and every
+            # whole-video-mode enqueue would insert a duplicate - same NULL
+            # gotcha as video_stages_conflict_target above, different table.
+            play_filter = (
+                ingestion_queue.c.play_index.is_(None) if play_index is None
+                else ingestion_queue.c.play_index == play_index
+            )
             with self.engine.begin() as conn:
                 existing = conn.execute(
                     select(ingestion_queue.c.id)
                     .where(ingestion_queue.c.video_id == video_id)
                     .where(ingestion_queue.c.stage == stage_str)
+                    .where(play_filter)
                     .where(ingestion_queue.c.status.in_(["queued", "processing"]))
                     .limit(1)
                 ).first()
                 if existing:
-                    logger.warning(f"[DUPLICATE] Job already exists: {video_id}/{stage_str}. Skipping enqueue.")
+                    logger.warning(f"[DUPLICATE] Job already exists: {video_id}/{stage_str} (play_index={play_index}). Skipping enqueue.")
                     return True
                 now = _utc_now()
                 conn.execute(
@@ -394,6 +434,7 @@ class PostgresClient:
                         retry_count=0,
                         max_retries=3,
                         metadata=metadata or {},
+                        play_index=play_index,
                     )
                 )
             return True
@@ -504,6 +545,7 @@ _DOC_ID_BUILDERS = {
     "frames": lambda row: f"{row['frame_index']:06d}",
     "camera_motion": lambda row: f"{row['frame_index']:06d}",
     "whistle_events": lambda row: f"{row.get('event_index', 0):06d}",
+    "plays": lambda row: f"{row['play_index']:04d}",
 }
 
 

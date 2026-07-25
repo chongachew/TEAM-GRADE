@@ -104,6 +104,24 @@ class TestQueueDiagnostics:
         assert pg_client.delete_queue_entry_by_video_id("vidq5") is True
         assert pg_client.queue_entry_exists("vidq5") is False
 
+    def test_add_to_queue_null_play_index_dedup_uses_is_none(self, pg_client):
+        """Regression test: SQL NULL is never equal to NULL, so a naive
+        play_index == None comparison in the dedup check would never match
+        an existing whole-video-mode row and every such enqueue would insert
+        a duplicate instead of deduplicating."""
+        pg_client.save_video_metadata("vidq6", {})
+        pg_client.add_to_queue("vidq6", "metadata", priority=5, play_index=None)
+        pg_client.add_to_queue("vidq6", "metadata", priority=5, play_index=None)
+        stats = pg_client.get_queue_status()
+        assert stats["queued"] == 1
+
+    def test_add_to_queue_different_play_indexes_not_deduped(self, pg_client):
+        pg_client.save_video_metadata("vidq7", {})
+        pg_client.add_to_queue("vidq7", "detection", priority=5, play_index=0)
+        pg_client.add_to_queue("vidq7", "detection", priority=5, play_index=1)
+        stats = pg_client.get_queue_status()
+        assert stats["queued"] == 2
+
 
 class TestFirestoreCompatShim:
     def test_video_doc_set_and_get_with_stages(self, pg_client):
@@ -287,3 +305,76 @@ class TestStageStatusHelpers:
         data = pg_client.get_video_status("stagevid2")
         assert data["stages"]["pose"]["status"] == "completed"
         assert data["stages"]["pose"]["total_poses"] == 42
+
+
+class TestVideoStagesPlayIndexUniqueness:
+    """Regression tests for the video_stages NULL-uniqueness fix: Postgres
+    never treats two NULLs as conflicting under a multi-column UNIQUE
+    constraint, so adding play_index to video_stages' uniqueness required a
+    partial index for the play_index IS NULL case (see
+    video_stages_conflict_target in ingest/postgres_client.py)."""
+
+    def test_upsert_stage_fields_null_play_index_updates_same_row_twice(self, pg_client):
+        from ingest.postgres_client import upsert_stage_fields
+        from ingest.db_schema import video_stages
+
+        pg_client.save_video_metadata("nullplayvid1", {})
+        with pg_client.engine.begin() as conn:
+            upsert_stage_fields(conn, "nullplayvid1", "detection", {"status": "processing"}, play_index=None)
+        with pg_client.engine.begin() as conn:
+            upsert_stage_fields(conn, "nullplayvid1", "detection", {"status": "completed"}, play_index=None)
+
+        with pg_client.engine.connect() as conn:
+            rows = conn.execute(
+                video_stages.select().where(
+                    (video_stages.c.video_id == "nullplayvid1")
+                    & (video_stages.c.stage_name == "detection")
+                )
+            ).mappings().all()
+
+        assert len(rows) == 1
+        assert rows[0]["status"] == "completed"
+
+    def test_upsert_stage_fields_real_play_index_does_not_collide_with_null_row(self, pg_client):
+        from ingest.postgres_client import upsert_stage_fields
+        from ingest.db_schema import video_stages
+
+        pg_client.save_video_metadata("nullplayvid2", {})
+        with pg_client.engine.begin() as conn:
+            upsert_stage_fields(conn, "nullplayvid2", "detection", {"status": "processing"}, play_index=None)
+        with pg_client.engine.begin() as conn:
+            upsert_stage_fields(conn, "nullplayvid2", "detection", {"status": "processing"}, play_index=0)
+
+        with pg_client.engine.connect() as conn:
+            rows = conn.execute(
+                video_stages.select().where(
+                    (video_stages.c.video_id == "nullplayvid2")
+                    & (video_stages.c.stage_name == "detection")
+                )
+            ).mappings().all()
+
+        assert len(rows) == 2
+        play_indexes = {r["play_index"] for r in rows}
+        assert play_indexes == {None, 0}
+
+    def test_mark_stage_attempt_with_play_index_scopes_independently(self, pg_client):
+        from ingest.utils.firestore_utils import mark_stage_attempt
+        from ingest.db_schema import video_stages
+
+        pg_client.save_video_metadata("nullplayvid3", {})
+        mark_stage_attempt(pg_client, "nullplayvid3", "detection", play_index=0)
+        mark_stage_attempt(pg_client, "nullplayvid3", "detection", play_index=0)
+        mark_stage_attempt(pg_client, "nullplayvid3", "detection", play_index=1)
+
+        with pg_client.engine.connect() as conn:
+            rows = {
+                r["play_index"]: r["attempt"]
+                for r in conn.execute(
+                    video_stages.select().where(
+                        (video_stages.c.video_id == "nullplayvid3")
+                        & (video_stages.c.stage_name == "detection")
+                    )
+                ).mappings()
+            }
+
+        assert rows == {0: 2, 1: 1}

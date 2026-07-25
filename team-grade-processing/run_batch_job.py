@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--video-id", required=True)
     parser.add_argument("--stage", required=True)
     parser.add_argument("--queue-doc-id", required=True)
+    parser.add_argument("--play-index", type=int, default=None)
     args = parser.parse_args()
 
     from ingest.ingest_pipeline_worker import PipelineWorker
@@ -33,6 +34,7 @@ def main():
         "video_id": args.video_id,
         "stage": args.stage,
         "_doc_id": args.queue_doc_id,
+        "play_index": args.play_index,
     }
     # force_inline=True: this process IS the offloaded Batch job - it must
     # actually run the stage handler here, not re-submit to Batch again.

@@ -100,7 +100,25 @@ video_stages = Table(
     Column("started_at", TIMESTAMP(timezone=True)),
     Column("completed_at", TIMESTAMP(timezone=True)),
     Column("extra", JSONB),
-    UniqueConstraint("video_id", "stage_name", name="uq_video_stages_video_stage"),
+    # Per-play redesign: NULL means "whole-video mode" (every video before
+    # play_detection existed, and any video where it found nothing and fell
+    # back to one whole-video play). A real play_index means this stage's
+    # progress is tracked independently per play.
+    Column("play_index", Integer, nullable=True),
+    UniqueConstraint("video_id", "stage_name", "play_index", name="uq_video_stages_video_stage_play"),
+    # Postgres treats every NULL as distinct under the composite constraint
+    # above, so it only actually de-dupes real per-play rows. Whole-video-mode
+    # rows (play_index IS NULL) need this partial index - same pattern as
+    # uq_pose_video_frame_null_track below - or every upsert with
+    # play_index=None would insert a new row instead of updating in place.
+    # ON CONFLICT calls target this index specifically when play_index is
+    # None (see postgres_client.video_stages_conflict_index).
+    Index(
+        "uq_video_stages_video_stage_null_play",
+        "video_id", "stage_name",
+        unique=True,
+        postgresql_where=_sql_text("play_index IS NULL"),
+    ),
 )
 
 ingestion_queue = Table(
@@ -120,7 +138,13 @@ ingestion_queue = Table(
     Column("failed_at", TIMESTAMP(timezone=True)),
     Column("error", Text),
     Column("metadata", JSONB),
+    # NULL for whole-video-mode jobs (all jobs before play_detection existed).
+    # A real value scopes this queue row to one play - dequeue_next_video()
+    # groups claimable rows by (video_id, play_index) so plays of the same
+    # video can progress independently instead of blocking each other.
+    Column("play_index", Integer, nullable=True),
     Index("ix_ingestion_queue_dequeue", "status", "priority", "created_at"),
+    Index("ix_ingestion_queue_video_play", "video_id", "play_index"),
 )
 
 frames = Table(
@@ -133,7 +157,12 @@ frames = Table(
     Column("path", Text),
     Column("width", Integer),
     Column("height", Integer),
+    # Filter-only column for Phase C (per-play scoped frame loading) - a
+    # frame is still uniquely identified by (video_id, frame_index) below,
+    # play_index is not part of its identity, just which play it belongs to.
+    Column("play_index", Integer, nullable=True),
     UniqueConstraint("video_id", "frame_index", name="uq_frames_video_frame"),
+    Index("ix_frames_video_play", "video_id", "play_index"),
 )
 
 pose = Table(
@@ -147,8 +176,10 @@ pose = Table(
     Column("landmarks", JSONB),
     Column("confidence_mean", Float),
     Column("created_at", TIMESTAMP(timezone=True)),
+    Column("play_index", Integer, nullable=True),
     UniqueConstraint("video_id", "frame_index", "track_id", name="uq_pose_video_frame_track"),
     Index("ix_pose_video_track_frame", "video_id", "track_id", "frame_index"),
+    Index("ix_pose_video_play", "video_id", "play_index"),
     # Postgres treats every NULL as distinct under a plain UNIQUE constraint, so
     # uq_pose_video_frame_track above only actually de-dupes multi-player rows
     # (real track_id). Single-athlete-mode rows (track_id IS NULL, the default
@@ -173,6 +204,7 @@ torso_crops = Table(
     Column("crop_path", Text),
     Column("crop_box", JSONB),
     Column("created_at", TIMESTAMP(timezone=True)),
+    Column("play_index", Integer, nullable=True),
     UniqueConstraint("video_id", "frame_index", "track_id", name="uq_torso_video_frame_track"),
     # See uq_pose_video_frame_null_track above - same NULL-track_id upsert gap.
     Index(
@@ -181,6 +213,7 @@ torso_crops = Table(
         unique=True,
         postgresql_where=_sql_text("track_id IS NULL"),
     ),
+    Index("ix_torso_video_play", "video_id", "play_index"),
 )
 
 reps = Table(
@@ -270,7 +303,9 @@ detections = Table(
     Column("confidence", Float),
     Column("class_name", String),
     Column("created_at", TIMESTAMP(timezone=True)),
+    Column("play_index", Integer, nullable=True),
     UniqueConstraint("video_id", "frame_index", "detection_index", name="uq_detections_video_frame_idx"),
+    Index("ix_detections_video_play", "video_id", "play_index"),
 )
 
 tracks = Table(
@@ -287,8 +322,10 @@ tracks = Table(
     Column("occlusion_state", String),
     Column("frames_since_last_seen", Integer),
     Column("created_at", TIMESTAMP(timezone=True)),
+    Column("play_index", Integer, nullable=True),
     UniqueConstraint("video_id", "frame_index", "track_id", name="uq_tracks_video_frame_track"),
     Index("ix_tracks_video_track_frame", "video_id", "track_id", "frame_index"),
+    Index("ix_tracks_video_play", "video_id", "play_index"),
 )
 
 tracks_meta = Table(
@@ -305,5 +342,28 @@ tracks_meta = Table(
     Column("total_frames_tracked", Integer),
     Column("status", String),
     Column("track_id_conflict", Boolean),
+    Column("play_index", Integer, nullable=True),
     UniqueConstraint("video_id", "track_id", name="uq_tracks_meta_video_track"),
+    Index("ix_tracks_meta_video_play", "video_id", "play_index"),
+)
+
+plays = Table(
+    "plays",
+    metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("video_id", String, ForeignKey("videos.video_id")),
+    Column("play_index", Integer, nullable=False),
+    Column("start_frame", Integer, nullable=False),
+    Column("end_frame", Integer, nullable=False),
+    Column("status", String),
+    # e.g. "ocr+camera_motion" (real signal) or "fallback_whole_video" (both
+    # signals found nothing - one play spanning the whole video, so the
+    # video still makes forward progress instead of silently stalling).
+    Column("detection_method", String),
+    # Left NULL - no per-candidate confidence score exists in the validated
+    # signal yet, not invented from nothing.
+    Column("confidence", Float, nullable=True),
+    Column("created_at", TIMESTAMP(timezone=True)),
+    UniqueConstraint("video_id", "play_index", name="uq_plays_video_play_index"),
+    Index("ix_plays_video_id", "video_id"),
 )
