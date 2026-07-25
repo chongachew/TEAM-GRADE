@@ -38,10 +38,27 @@ PILE_RADIUS_IN_BOX_WIDTHS = 8
 MIN_PILE_SIZE = 6  # fewer than this -> no reliable pile in this frame (likely a close-up), defer to the pixel-motion fallback
 
 # --- Calm-then-burst tuning ---
-CALM_FRAMES_REQUIRED = 15  # ~1s at 15fps, per the earlier discussion of what "set stance" looks like
+# Calibrated against real tracking data for kJM5Uk9DtoQ (2026-07-25), scored
+# via the OCR+tracking COMBINED signal (not tracking alone) against all 57
+# ground-truth plays. The original CALM_FRAMES_REQUIRED=15/MIN_FRAMES_BETWEEN_SNAPS=30
+# guess was diagnosed as the real bottleneck in the known hurry-up sequence
+# (565-630s, plays 1-3s apart): sweeping MIN_FRAMES_BETWEEN_SNAPS alone (30->7)
+# barely moved combined recall (75.4%->76-ish%), because CALM_FRAMES_REQUIRED's
+# ~1s calm-period requirement was the actual gate, not the cooldown. Lowering
+# CALM_FRAMES_REQUIRED alone (15->3) got combined recall to 80.7-89.5% but a
+# sweep of BURST_MOTION_THRESHOLD at each calm value showed precision crashing
+# fastest right at calm=3; calm=4 with a loosened burst threshold (0.8, from
+# the original 0.6) reached 84.2% combined recall / 69.6% precision at only
+# 1.21x the true play count (69 candidates vs. 57 real plays) - comfortably
+# inside the plan's 80-90% recall bar and its ~2x event-count ceiling, without
+# sitting right at the edge of either constant's sweep (a data point that
+# barely clears 80% has less margin against the ground truth's own labeling
+# imprecision than one that clears it by more). CALM_MOTION_THRESHOLD was left
+# untouched - it was never varied in this pass, only the timing/burst knobs.
+CALM_FRAMES_REQUIRED = 4  # ~0.27s at 15fps
 CALM_MOTION_THRESHOLD = 0.15  # mean per-track centroid displacement, in box-widths/frame, below which counts as "calm"
-BURST_MOTION_THRESHOLD = 0.6  # displacement, in box-widths/frame, above which counts as "burst"
-MIN_FRAMES_BETWEEN_SNAPS = 30  # ~2s - a real snap needs a fresh calm period first; this just avoids re-triggering on the same burst's tail
+BURST_MOTION_THRESHOLD = 0.8  # displacement, in box-widths/frame, above which counts as "burst"
+MIN_FRAMES_BETWEEN_SNAPS = 7  # ~0.5s - a real snap needs a fresh calm period first; this just avoids re-triggering on the same burst's tail
 
 
 def _centroid(bbox):
@@ -214,7 +231,7 @@ if __name__ == "__main__":
     # Phase 2: the snap - sudden real motion for a few frames
     for step in range(5):
         for tid, (x, y) in enumerate(base_positions):
-            dx = step * 25  # real displacement, well over burst threshold
+            dx = step * 45  # real displacement (1.1 box-widths/frame), well over burst threshold
             rows.append({"frame_index": frame, "track_id": tid, "bbox": [x + dx, y, x + dx + box_w, y + box_w]})
         frame += 1
 
