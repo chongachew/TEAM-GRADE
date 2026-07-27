@@ -15,7 +15,7 @@ from ingest.exceptions import (
     FirestoreError,
 )
 from ingest.validation import VideoIdValidator
-from ingest.utils.firestore_utils import get_utc_timestamp
+from ingest.utils.firestore_utils import get_utc_timestamp, mark_play_status, count_incomplete_plays
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +184,33 @@ def run_complete_stage(
                 "error_code": error_code
             })
             return False, error_code
-        
+
+        # -------- Per-play completion guard (per-play redesign) --------
+        # biomechanics_stage_vectorized.py self-enqueues "complete" once per
+        # play - a multi-play video hits this stage once per play, not once
+        # total. Only actually finalize the whole video once every plays row
+        # has reached completion; otherwise mark this one play done and
+        # return without touching video-level status, so an earlier play
+        # finishing doesn't prematurely mark the whole video complete. This
+        # is a thin, additive slice of Phase D's real aggregation logic,
+        # pulled forward just far enough that a multi-play video reaches
+        # status="completed" correctly.
+        play_index = (payload or {}).get("play_index")
+        if play_index is not None:
+            mark_play_status(firestore_client, video_id_safe, play_index, "completed")
+            pending = count_incomplete_plays(firestore_client, video_id_safe)
+            if pending > 0:
+                logger.info(
+                    f"[{STAGE_NAME}] Play {play_index} completed; "
+                    f"{pending} other play(s) still pending - video not yet complete",
+                    extra={"video_id": video_id_safe, "play_index": play_index, "pending_plays": pending},
+                )
+                return True, None
+            logger.info(
+                f"[{STAGE_NAME}] Play {play_index} was the last pending play - finalizing whole video",
+                extra={"video_id": video_id_safe, "play_index": play_index},
+            )
+
         # -------- Mark pipeline as complete --------
         
         try:

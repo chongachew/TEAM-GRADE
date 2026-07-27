@@ -25,8 +25,11 @@ from ingest.utils.firestore_utils import (
     write_tracks_batch,
     upsert_track_meta,
     write_jersey_number_for_track,
+    get_play,
+    update_stage_status,
 )
 from ingest.s3_client import ensure_frames_local
+from ingest.frame_range import list_frame_paths_by_index
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +134,20 @@ def run_tracking_stage(
 
         import cv2
 
-        frames_dir = settings.get_frames_dir(video_id_safe)
+        play_index = (payload or {}).get("play_index")
+        start_frame = end_frame = None
+        if play_index is not None:
+            play = get_play(firestore_client, video_id_safe, play_index)
+            if play is None:
+                error_code = "PLAY_NOT_FOUND"
+                logger.error(f"[{STAGE_NAME}] No plays row found", extra={
+                    "video_id": video_id_safe,
+                    "play_index": play_index,
+                    "error_code": error_code
+                })
+                return False, error_code
+            start_frame, end_frame = play["start_frame"], play["end_frame"]
+
         # Defensive guard: normally already-local (same worker process as
         # frame_extraction), but a retry could be picked up by a different
         # worker instance - cheap check-then-fetch from S3.
@@ -141,12 +157,16 @@ def run_tracking_stage(
             logger.debug(f"[{STAGE_NAME}] S3 frames fallback unavailable (non-fatal): {e}", extra={
                 "video_id": video_id_safe,
             })
-        frame_paths = sorted(frames_dir.glob("frame_*.jpg"))
+        # Keyed by the real frame_index parsed from each filename, not list
+        # position - see detection_stage.py's identical comment.
+        frame_paths_by_index = list_frame_paths_by_index(video_id_safe, start_frame, end_frame)
+        ordered_frames = sorted(frame_paths_by_index.items())
 
-        if not frame_paths:
+        if not ordered_frames:
             error_code = "FRAMES_NOT_FOUND"
             logger.error(f"[{STAGE_NAME}] No frames found", extra={
                 "video_id": video_id_safe,
+                "play_index": play_index,
                 "error_code": error_code
             })
             return False, error_code
@@ -155,6 +175,8 @@ def run_tracking_stage(
             detections_ref = firestore_client.db.collection(
                 settings.COLLECTION_VIDEOS
             ).document(video_id_safe).collection("detections")
+            if play_index is not None:
+                detections_ref = detections_ref.where("play_index", "==", play_index)
             detection_docs = list(detections_ref.stream())
 
             if not detection_docs:
@@ -191,7 +213,7 @@ def run_tracking_stage(
         track_docs: List[Dict] = []
 
         try:
-            for frame_idx, frame_path in enumerate(frame_paths):
+            for frame_idx, frame_path in ordered_frames:
                 frame_dets = detections_by_frame.get(frame_idx, [])
                 if not frame_dets:
                     continue
@@ -206,6 +228,7 @@ def run_tracking_stage(
 
                 for result in results:
                     result["created_at"] = get_utc_timestamp()
+                    result["play_index"] = play_index
                     track_docs.append(result)
 
                     # Opportunistic re-ID hook: only fires once a track has been
@@ -223,7 +246,7 @@ def run_tracking_stage(
                     logger.info(f"[{STAGE_NAME}] Progress", extra={
                         "video_id": video_id_safe,
                         "frames_processed": frame_idx,
-                        "total_frames": len(frame_paths),
+                        "total_frames": len(ordered_frames),
                         "active_tracks": sum(1 for t in tracker.tracks.values() if t.status == "active"),
                     })
 
@@ -254,14 +277,16 @@ def run_tracking_stage(
                     "last_frame": track.last_frame_seen,
                     "total_frames_tracked": sum(1 for d in track_docs if d["track_id"] == tid),
                     "status": track.status,
-                })
+                }, play_index=play_index)
 
-            firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(video_id_safe).update({
-                "stages.tracking.status": "completed",
-                "stages.tracking.total_tracks": len(tracker.tracks),
-                "stages.tracking.total_track_docs": len(track_docs),
-                "stages.tracking.completed_at": get_utc_timestamp(),
-            })
+            update_stage_status(
+                firestore_client, video_id_safe, STAGE_NAME, "completed",
+                metadata={
+                    "total_tracks": len(tracker.tracks),
+                    "total_track_docs": len(track_docs),
+                },
+                play_index=play_index,
+            )
 
         except Exception as e:
             error_code = "FIRESTORE_ERROR"
@@ -276,6 +301,7 @@ def run_tracking_stage(
                 video_id_safe,
                 stage=STAGE_NEXT,
                 priority=settings.QUEUE_DEFAULT_PRIORITY,
+                play_index=play_index,
                 metadata={"previous_stage": STAGE_NAME}
             )
             if not success:
@@ -322,6 +348,15 @@ def _maybe_run_reid_ocr(
     that track's already-known jersey number (if any). Errors here are logged and
     swallowed - the re-ID hook is a best-effort cross-check, not a required part
     of a successful tracking-stage run.
+
+    Known scope limitation (per-play redesign): this hook's tracks_meta lookup
+    is by (video_id, track_id) only, not play_index - unlike the main
+    per-track summary write above (upsert_track_meta(..., play_index=...)).
+    Since track_id resets to 0 per play, a long-gap re-ID within one play
+    could in principle read/flag against a different play's same-numbered
+    track's stale row. Not fixed here: this is a best-effort, errors-swallowed
+    cross-check, not the primary jersey-number write path (that's
+    jersey_ocr_stage.py, which IS play-scoped).
     """
     try:
         from processing.torso_cropper import crop_torso_region_from_bbox

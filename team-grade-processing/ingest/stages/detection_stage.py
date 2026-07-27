@@ -19,8 +19,9 @@ from ingest.exceptions import (
     QueueError,
 )
 from ingest.validation import VideoIdValidator
-from ingest.utils.firestore_utils import get_utc_timestamp, write_detections_batch
+from ingest.utils.firestore_utils import get_utc_timestamp, write_detections_batch, get_play, update_stage_status
 from ingest.s3_client import ensure_frames_local
+from ingest.frame_range import list_frame_paths_by_index
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +113,20 @@ def run_detection_stage(
         import cv2
         import torch
 
-        frames_dir = settings.get_frames_dir(video_id_safe)
+        play_index = (payload or {}).get("play_index")
+        start_frame = end_frame = None
+        if play_index is not None:
+            play = get_play(firestore_client, video_id_safe, play_index)
+            if play is None:
+                error_code = "PLAY_NOT_FOUND"
+                logger.error(f"[{STAGE_NAME}] No plays row found", extra={
+                    "video_id": video_id_safe,
+                    "play_index": play_index,
+                    "error_code": error_code
+                })
+                return False, error_code
+            start_frame, end_frame = play["start_frame"], play["end_frame"]
+
         # Defensive guard: normally already-local (same worker process as
         # frame_extraction), but a retry could be picked up by a different
         # worker instance - cheap check-then-fetch from S3.
@@ -122,20 +136,26 @@ def run_detection_stage(
             logger.debug(f"[{STAGE_NAME}] S3 frames fallback unavailable (non-fatal): {e}", extra={
                 "video_id": video_id_safe,
             })
-        frame_paths = sorted(frames_dir.glob("frame_*.jpg"))
+        # Keyed by the real frame_index parsed from each filename, not list
+        # position - critical once this is filtered to one play's range,
+        # since the first frame in a play starting at frame 500 must still
+        # be labeled frame_index=500, not 0.
+        frame_paths_by_index = list_frame_paths_by_index(video_id_safe, start_frame, end_frame)
+        ordered_frames = sorted(frame_paths_by_index.items())
 
-        if not frame_paths:
+        if not ordered_frames:
             error_code = "FRAMES_NOT_FOUND"
             logger.error(f"[{STAGE_NAME}] No frames found", extra={
                 "video_id": video_id_safe,
-                "directory": str(frames_dir),
+                "play_index": play_index,
                 "error_code": error_code
             })
             return False, error_code
 
         logger.info(f"[{STAGE_NAME}] Found frames", extra={
             "video_id": video_id_safe,
-            "frame_count": len(frame_paths),
+            "frame_count": len(ordered_frames),
+            "play_index": play_index,
         })
 
         try:
@@ -152,12 +172,11 @@ def run_detection_stage(
         batch_size = settings.DETECTION_BATCH_SIZE
 
         try:
-            for batch_start in range(0, len(frame_paths), batch_size):
-                batch_paths = frame_paths[batch_start: batch_start + batch_size]
+            for batch_start in range(0, len(ordered_frames), batch_size):
+                batch = ordered_frames[batch_start: batch_start + batch_size]
                 images = []
                 valid_indices = []
-                for offset, path in enumerate(batch_paths):
-                    frame_idx = batch_start + offset
+                for frame_idx, path in batch:
                     frame = cv2.imread(str(path))
                     if frame is None:
                         logger.debug(f"[{STAGE_NAME}] Skipped unreadable frame: {frame_idx}")
@@ -195,6 +214,7 @@ def run_detection_stage(
                             "confidence": float(detections.confidence[i]),
                             "class_name": name,
                             "created_at": get_utc_timestamp(),
+                            "play_index": play_index,
                         })
                         det_idx += 1
 
@@ -211,8 +231,8 @@ def run_detection_stage(
                 if (batch_start // batch_size) % 5 == 0:
                     logger.info(f"[{STAGE_NAME}] Progress", extra={
                         "video_id": video_id_safe,
-                        "frames_processed": min(batch_start + batch_size, len(frame_paths)),
-                        "total_frames": len(frame_paths),
+                        "frames_processed": min(batch_start + batch_size, len(ordered_frames)),
+                        "total_frames": len(ordered_frames),
                         "detections_so_far": len(detections_out),
                     })
 
@@ -231,12 +251,14 @@ def run_detection_stage(
                 "detections_written": written,
             })
 
-            firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(video_id_safe).update({
-                "stages.detection.status": "completed",
-                "stages.detection.total_detections": len(detections_out),
-                "stages.detection.total_frames": len(frame_paths),
-                "stages.detection.completed_at": get_utc_timestamp(),
-            })
+            update_stage_status(
+                firestore_client, video_id_safe, STAGE_NAME, "completed",
+                metadata={
+                    "total_detections": len(detections_out),
+                    "total_frames": len(ordered_frames),
+                },
+                play_index=play_index,
+            )
 
         except Exception as e:
             error_code = "FIRESTORE_ERROR"
@@ -251,6 +273,7 @@ def run_detection_stage(
                 video_id_safe,
                 stage=STAGE_NEXT,
                 priority=settings.QUEUE_DEFAULT_PRIORITY,
+                play_index=play_index,
                 metadata={"previous_stage": STAGE_NAME}
             )
             if not success:

@@ -56,14 +56,15 @@ def test_flushes_in_multiple_batches_and_reports_true_total(tmp_path, monkeypatc
     mock_queue.enqueue_video.return_value = True
 
     with patch("processing.lightweight_pose.PoseEstimatorFactory.create", return_value=_make_estimator()), \
-         patch.object(pose_stage_lite, "write_pose_batch", side_effect=_fake_write_pose_batch) as mock_write:
+         patch.object(pose_stage_lite, "write_pose_batch", side_effect=_fake_write_pose_batch) as mock_write, \
+         patch.object(pose_stage_lite, "update_stage_status") as mock_update_status:
         success, error = pose_stage_lite.run_pose_stage_lite(mock_firestore, "dQw4w9WgXcQ", mock_queue)
 
     assert success is True, error
     assert mock_write.call_count == 3  # two full batches of 10 + one final batch of 5
 
-    update_call = mock_firestore.db.collection.return_value.document.return_value.update.call_args[0][0]
-    assert update_call["stages.pose.total_poses"] == 25  # true total, not just the last partial batch
+    # true total, not just the last partial batch
+    assert mock_update_status.call_args.kwargs["metadata"]["total_poses"] == 25
 
     assert mock_queue.enqueue_video.call_args.kwargs["metadata"]["pose_count"] == 25
 
@@ -83,14 +84,70 @@ def test_single_flush_when_frame_count_is_under_the_batch_size(tmp_path, monkeyp
     mock_queue.enqueue_video.return_value = True
 
     with patch("processing.lightweight_pose.PoseEstimatorFactory.create", return_value=_make_estimator()), \
-         patch.object(pose_stage_lite, "write_pose_batch", side_effect=_fake_write_pose_batch) as mock_write:
+         patch.object(pose_stage_lite, "write_pose_batch", side_effect=_fake_write_pose_batch) as mock_write, \
+         patch.object(pose_stage_lite, "update_stage_status") as mock_update_status:
         success, error = pose_stage_lite.run_pose_stage_lite(mock_firestore, "dQw4w9WgXcQ", mock_queue)
 
     assert success is True, error
     assert mock_write.call_count == 1  # everything fits in the final flush, no mid-loop flush ever triggers
 
-    update_call = mock_firestore.db.collection.return_value.document.return_value.update.call_args[0][0]
-    assert update_call["stages.pose.total_poses"] == 4
+    assert mock_update_status.call_args.kwargs["metadata"]["total_poses"] == 4
+
+
+def test_run_pose_stage_scopes_to_one_play(tmp_path, monkeypatch):
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+    # 6 frames on disk; queue item scoped to play_index=1 (frames 3-5).
+    for i in range(6):
+        _write_frame(frames_dir / f"frame_{i:06d}.jpg")
+
+    monkeypatch.setattr(settings, "get_frames_dir", lambda video_id: frames_dir)
+    monkeypatch.setattr(settings, "MULTI_PLAYER_TRACKING_ENABLED", False)
+    monkeypatch.setattr(settings, "POSE_BATCH_FRAME_COUNT", 10)
+
+    mock_firestore = MagicMock()
+    mock_queue = MagicMock()
+    mock_queue.enqueue_video.return_value = True
+
+    written_poses = []
+
+    def _capture_write_pose_batch(firestore_client, video_id, poses, **kwargs):
+        written_poses.extend(poses)
+        return len(poses)
+
+    with patch("processing.lightweight_pose.PoseEstimatorFactory.create", return_value=_make_estimator()), \
+         patch.object(pose_stage_lite, "get_play", return_value={"start_frame": 3, "end_frame": 5}), \
+         patch.object(pose_stage_lite, "write_pose_batch", side_effect=_capture_write_pose_batch), \
+         patch.object(pose_stage_lite, "update_stage_status") as mock_update_status:
+        success, error = pose_stage_lite.run_pose_stage_lite(
+            mock_firestore, "dQw4w9WgXcQ", mock_queue, payload={"play_index": 1}
+        )
+
+    assert success is True, error
+    # Only frames 3/4/5 processed, not 0/1/2.
+    assert sorted(p["frame_index"] for p in written_poses) == [3, 4, 5]
+    assert all(p["play_index"] == 1 for p in written_poses)
+    assert mock_update_status.call_args.kwargs["play_index"] == 1
+    assert mock_queue.enqueue_video.call_args.kwargs["play_index"] == 1
+
+
+def test_run_pose_stage_missing_play_row_returns_error(tmp_path, monkeypatch):
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+    monkeypatch.setattr(settings, "get_frames_dir", lambda video_id: frames_dir)
+    monkeypatch.setattr(settings, "MULTI_PLAYER_TRACKING_ENABLED", False)
+
+    mock_firestore = MagicMock()
+    mock_queue = MagicMock()
+
+    with patch.object(pose_stage_lite, "get_play", return_value=None):
+        success, error = pose_stage_lite.run_pose_stage_lite(
+            mock_firestore, "dQw4w9WgXcQ", mock_queue, payload={"play_index": 4}
+        )
+
+    assert success is False
+    assert error == "PLAY_NOT_FOUND"
+    mock_queue.enqueue_video.assert_not_called()
 
 
 def test_streaming_flush_failure_is_non_fatal(tmp_path, monkeypatch):

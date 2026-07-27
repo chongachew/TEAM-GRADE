@@ -86,8 +86,15 @@ SUBCOLLECTION_TABLES = {
 _NULLABLE_TRACK_UNIQUE = {
     "pose": (pose, ["video_id", "frame_index"], "uq_pose_video_frame_null_track"),
     "torso_crops": (torso_crops, ["video_id", "frame_index"], "uq_torso_video_frame_null_track"),
-    "reps": (reps, ["video_id", "rep_index"], "uq_reps_video_rep_null_track"),
-    "rep_analysis": (rep_analysis, ["video_id", "rep_index"], "uq_rep_analysis_video_rep_null_track"),
+}
+
+# reps/rep_analysis have TWO independently-nullable identity columns
+# (track_id, play_index as of the per-play redesign Phase C) - see
+# db_schema.py's uq_reps_video_rep_track_play / uq_rep_analysis_video_rep_track_play
+# COALESCE-based expression unique indexes and upsert_row_coalesce_keys below.
+_COALESCE_KEY_TABLES = {
+    "reps": (reps, ["video_id", "rep_index"], ["track_id", "play_index"]),
+    "rep_analysis": (rep_analysis, ["video_id", "rep_index"], ["track_id", "play_index"]),
 }
 
 
@@ -126,6 +133,20 @@ def video_stages_conflict_target(play_index: Optional[int] = None):
     if play_index is None:
         return ["video_id", "stage_name"], video_stages.c.play_index.is_(None)
     return ["video_id", "stage_name", "play_index"], None
+
+
+def tracks_meta_conflict_target(play_index: Optional[int] = None):
+    """Which tracks_meta ON CONFLICT arbiter to target - same NULL-uniqueness
+    reasoning as video_stages_conflict_target above, for tracks_meta's
+    (video_id, track_id, play_index) identity. track_id resets to 0 for
+    every play (see db_schema.py's comment on tracks_meta), so a
+    play_index-unaware ON CONFLICT would insert a duplicate row - or worse,
+    silently overwrite a different play's track 0 summary - instead of
+    upserting the right one.
+    """
+    if play_index is None:
+        return ["video_id", "track_id"], tracks_meta.c.play_index.is_(None)
+    return ["video_id", "track_id", "play_index"], None
 
 
 def upsert_stage_fields(
@@ -191,6 +212,28 @@ def upsert_row_nullable_track(conn, table_name: str, keys: Dict[str, Any], value
         stmt = stmt.on_conflict_do_update(
             index_elements=index_elements, set_=update_cols
         ) if update_cols else stmt.on_conflict_do_nothing(index_elements=index_elements)
+    conn.execute(stmt)
+
+
+def upsert_row_coalesce_keys(conn, table_name: str, keys: Dict[str, Any], values: Dict[str, Any]) -> None:
+    """Insert-or-update a row in a table whose uniqueness tuple includes two
+    or more independently-nullable columns (reps/rep_analysis: track_id AND
+    play_index). Postgres's ON CONFLICT inference matches an expression
+    unique index by listing the SAME expressions as conflict target - so
+    this targets db_schema.py's COALESCE(col, -1) index directly rather than
+    enumerating the 2^n partial-index combinations
+    upsert_row_nullable_track's single-nullable-column approach would need.
+    """
+    table, base_cols, nullable_cols = _COALESCE_KEY_TABLES[table_name]
+    row = {**keys, **values}
+    stmt = pg_insert(table).values(**row)
+    update_cols = {k: getattr(stmt.excluded, k) for k in values}
+    index_elements = [table.c[c] for c in base_cols] + [
+        func.coalesce(table.c[c], -1) for c in nullable_cols
+    ]
+    stmt = stmt.on_conflict_do_update(
+        index_elements=index_elements, set_=update_cols
+    ) if update_cols else stmt.on_conflict_do_nothing(index_elements=index_elements)
     conn.execute(stmt)
 
 
@@ -841,15 +884,19 @@ class _SubDocRef:
         if self.subname == "analysis":
             rep_index = int(self.doc_id.split("_", 1)[1])
             track_id = fields.get("track_id")
+            play_index = fields.get("play_index")
             values = {
                 "traits": fields.get("traits"),
                 "buckets": fields.get("buckets"),
                 "overall_grade": fields.get("overall_grade"),
             }
             with self.engine.begin() as conn:
-                upsert_row_nullable_track(
+                upsert_row_coalesce_keys(
                     conn, "rep_analysis",
-                    keys={"video_id": self.video_id, "rep_index": rep_index, "track_id": track_id},
+                    keys={
+                        "video_id": self.video_id, "rep_index": rep_index,
+                        "track_id": track_id, "play_index": play_index,
+                    },
                     values=values,
                 )
             return

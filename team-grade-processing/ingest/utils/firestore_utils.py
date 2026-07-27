@@ -26,6 +26,7 @@ import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 
+from sqlalchemy import select, update as sa_update, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from config import settings
@@ -41,7 +42,12 @@ from ingest.db_schema import (
     tracks_meta as tracks_meta_table,
     plays as plays_table,
 )
-from ingest.postgres_client import upsert_stage_fields, upsert_row_nullable_track
+from ingest.postgres_client import (
+    upsert_stage_fields,
+    upsert_row_nullable_track,
+    upsert_row_coalesce_keys,
+    tracks_meta_conflict_target,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +210,7 @@ def write_pose_batch(
                         "landmarks": pose.get("landmarks"),
                         "confidence_mean": pose.get("confidence_mean"),
                         "created_at": pose.get("created_at") or get_utc_timestamp(),
+                        "play_index": pose.get("play_index"),
                     }
                     upsert_row_nullable_track(
                         conn, "pose",
@@ -258,6 +265,7 @@ def write_torso_crops_batch(
                         "crop_path": crop.get("crop_path"),
                         "crop_box": crop.get("crop_box"),
                         "created_at": crop.get("created_at") or get_utc_timestamp(),
+                        "play_index": crop.get("play_index"),
                     }
                     upsert_row_nullable_track(
                         conn, "torso_crops",
@@ -316,9 +324,12 @@ def write_reps_batch(
                         "duration_seconds": rep.get("duration_seconds"),
                         "jersey_number": rep.get("jersey_number"),
                     }
-                    upsert_row_nullable_track(
+                    upsert_row_coalesce_keys(
                         conn, "reps",
-                        keys={"video_id": safe_id, "rep_index": rep["rep_index"], "track_id": track_id},
+                        keys={
+                            "video_id": safe_id, "rep_index": rep["rep_index"],
+                            "track_id": track_id, "play_index": rep.get("play_index"),
+                        },
                         values=values,
                     )
             written += len(batch)
@@ -461,6 +472,67 @@ def write_plays_batch(
         return 0
 
 
+def get_play(firestore_client, video_id: str, play_index: int) -> Optional[Dict[str, Any]]:
+    """Read one `plays` row (start_frame/end_frame/status/etc.) so a per-play
+    stage handler can scope its frame/doc loading to it.
+
+    Returns None if no such (video_id, play_index) row exists.
+    """
+    try:
+        safe_id = settings.sanitize_id(video_id)
+        with firestore_client.engine.connect() as conn:
+            row = conn.execute(
+                select(plays_table)
+                .where(plays_table.c.video_id == safe_id)
+                .where(plays_table.c.play_index == play_index)
+            ).mappings().first()
+        return dict(row) if row else None
+
+    except ValueError as e:
+        logger.error(f"[PG] Invalid input: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"[PG] Failed to read play {play_index} for {video_id}: {e}")
+        return None
+
+
+def mark_play_status(firestore_client, video_id: str, play_index: int, status: str) -> bool:
+    """Update one `plays` row's status (e.g. "completed")."""
+    try:
+        safe_id = settings.sanitize_id(video_id)
+        with firestore_client.engine.begin() as conn:
+            conn.execute(
+                sa_update(plays_table)
+                .where(plays_table.c.video_id == safe_id)
+                .where(plays_table.c.play_index == play_index)
+                .values(status=status)
+            )
+        return True
+
+    except ValueError as e:
+        logger.error(f"[PG] Invalid input: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"[PG] Failed to mark play {play_index} status for {video_id}: {e}")
+        return False
+
+
+def count_incomplete_plays(firestore_client, video_id: str, completed_status: str = "completed") -> int:
+    """Count how many `plays` rows for this video have NOT reached
+    `completed_status` yet - used by complete_stage.py's per-play completion
+    guard to decide whether the whole video is actually done.
+    """
+    safe_id = settings.sanitize_id(video_id)
+    with firestore_client.engine.connect() as conn:
+        count = conn.execute(
+            select(func.count())
+            .select_from(plays_table)
+            .where(plays_table.c.video_id == safe_id)
+            .where(plays_table.c.status != completed_status)
+        ).scalar_one()
+    return count
+
+
 def write_whistle_events_batch(
     firestore_client,
     video_id: str,
@@ -561,6 +633,7 @@ def write_detections_batch(
                         "confidence": det.get("confidence"),
                         "class_name": det.get("class_name"),
                         "created_at": det.get("created_at") or get_utc_timestamp(),
+                        "play_index": det.get("play_index"),
                     }
                     stmt = pg_insert(detections_table).values(**row)
                     update_cols = {
@@ -626,6 +699,7 @@ def write_tracks_batch(
                         "occlusion_state": track.get("occlusion_state"),
                         "frames_since_last_seen": track.get("frames_since_last_seen"),
                         "created_at": track.get("created_at") or get_utc_timestamp(),
+                        "play_index": track.get("play_index"),
                     }
                     stmt = pg_insert(tracks_table).values(**row)
                     update_cols = {
@@ -653,9 +727,11 @@ def upsert_track_meta(
     firestore_client,
     video_id: str,
     track_id: int,
-    fields: Dict[str, Any]
+    fields: Dict[str, Any],
+    play_index: Optional[int] = None,
 ) -> bool:
-    """Merge-update the per-track summary row (tracks_meta, one row per (video_id, track_id)).
+    """Merge-update the per-track summary row (tracks_meta, one row per
+    (video_id, track_id, play_index)).
 
     Called repeatedly as tracking proceeds (e.g. to extend last_frame) and later by
     jersey_ocr_stage / the tracking stage's re-ID hook (e.g. to set jersey_number).
@@ -665,6 +741,8 @@ def upsert_track_meta(
         video_id: YouTube video ID (will be sanitized)
         track_id: Track ID
         fields: Fields to merge into the track_meta row
+        play_index: Which play this track belongs to, or None for
+            whole-video-mode (see postgres_client.tracks_meta_conflict_target)
 
     Returns:
         True if successful
@@ -676,14 +754,19 @@ def upsert_track_meta(
         safe_id = settings.sanitize_id(video_id)
         engine = firestore_client.engine
         known_cols = {c.name for c in tracks_meta_table.columns}
-        values = {k: v for k, v in fields.items() if k in known_cols}
+        values = {k: v for k, v in fields.items() if k in known_cols and k != "play_index"}
 
         with engine.begin() as conn:
-            stmt = pg_insert(tracks_meta_table).values(video_id=safe_id, track_id=track_id, **values)
+            stmt = pg_insert(tracks_meta_table).values(
+                video_id=safe_id, track_id=track_id, play_index=play_index, **values
+            )
             update_cols = {k: getattr(stmt.excluded, k) for k in values}
+            index_elements, index_where = tracks_meta_conflict_target(play_index)
             stmt = stmt.on_conflict_do_update(
-                index_elements=["video_id", "track_id"], set_=update_cols
-            ) if update_cols else stmt.on_conflict_do_nothing(index_elements=["video_id", "track_id"])
+                index_elements=index_elements, index_where=index_where, set_=update_cols
+            ) if update_cols else stmt.on_conflict_do_nothing(
+                index_elements=index_elements, index_where=index_where
+            )
             conn.execute(stmt)
 
         return True
@@ -702,7 +785,8 @@ def write_jersey_number_for_track(
     track_id: int,
     jersey_number: str,
     confidence: float,
-    source_frame_id: int
+    source_frame_id: int,
+    play_index: Optional[int] = None,
 ) -> bool:
     """Write a detected jersey number to a track's summary row.
 
@@ -716,6 +800,10 @@ def write_jersey_number_for_track(
         jersey_number: Detected jersey number (str)
         confidence: OCR confidence [0.0-1.0]
         source_frame_id: Frame where jersey was detected
+        play_index: Which play this track belongs to, or None for
+            whole-video-mode - must match the play_index tracking_stage.py
+            used when it created this track's row, or this will target a
+            different (video_id, track_id, play_index) row than intended.
 
     Returns:
         True if successful
@@ -724,7 +812,7 @@ def write_jersey_number_for_track(
         "jersey_number": jersey_number,
         "jersey_confidence": confidence,
         "jersey_source_frame": source_frame_id,
-    })
+    }, play_index=play_index)
     if success:
         logger.info(
             f"[PG] Wrote jersey number for track {track_id}: {jersey_number} (conf={confidence:.2f})"

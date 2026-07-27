@@ -31,6 +31,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Index,
     ForeignKey,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import text as _sql_text
@@ -223,19 +224,29 @@ reps = Table(
     Column("video_id", String, ForeignKey("videos.video_id")),
     Column("rep_index", Integer),
     Column("track_id", Integer, nullable=True),
+    # Per-play redesign Phase C: rep_extraction now runs once per play, and
+    # segment_reps_from_pose_docs() assigns rep_index starting at 0 on every
+    # call - without play_index in the identity tuple, two different plays'
+    # rep_index=0 would collide on the same (video_id, rep_index, track_id)
+    # row and silently overwrite each other instead of coexisting.
+    Column("play_index", Integer, nullable=True),
     Column("start_frame", Integer),
     Column("end_frame", Integer),
     Column("duration_frames", Integer),
     Column("duration_seconds", Float),
     Column("jersey_number", String),
-    UniqueConstraint("video_id", "rep_index", "track_id", name="uq_reps_video_rep_track"),
-    # See uq_pose_video_frame_null_track above - same NULL-track_id upsert gap.
-    Index(
-        "uq_reps_video_rep_null_track",
-        "video_id", "rep_index",
-        unique=True,
-        postgresql_where=_sql_text("track_id IS NULL"),
-    ),
+)
+# track_id AND play_index are both independently nullable - rather than
+# enumerating the 4 partial-index combinations the single-nullable-column
+# pattern above uses (uq_pose_video_frame_null_track and siblings), a single
+# COALESCE-based expression unique index treats NULL as a normal sentinel
+# value (-1, an otherwise-impossible track_id/play_index) so ON CONFLICT can
+# target one index regardless of which columns are NULL.
+Index(
+    "uq_reps_video_rep_track_play",
+    reps.c.video_id, reps.c.rep_index,
+    func.coalesce(reps.c.track_id, -1), func.coalesce(reps.c.play_index, -1),
+    unique=True,
 )
 
 rep_analysis = Table(
@@ -245,17 +256,18 @@ rep_analysis = Table(
     Column("video_id", String, ForeignKey("videos.video_id")),
     Column("rep_index", Integer),
     Column("track_id", Integer, nullable=True),
+    Column("play_index", Integer, nullable=True),
     Column("traits", JSONB),
     Column("buckets", JSONB),
     Column("overall_grade", Float),
-    UniqueConstraint("video_id", "rep_index", "track_id", name="uq_rep_analysis_video_rep_track"),
-    # See uq_pose_video_frame_null_track above - same NULL-track_id upsert gap.
-    Index(
-        "uq_rep_analysis_video_rep_null_track",
-        "video_id", "rep_index",
-        unique=True,
-        postgresql_where=_sql_text("track_id IS NULL"),
-    ),
+)
+# See reps' uq_reps_video_rep_track_play above - same two-independently-
+# nullable-columns reasoning applies here.
+Index(
+    "uq_rep_analysis_video_rep_track_play",
+    rep_analysis.c.video_id, rep_analysis.c.rep_index,
+    func.coalesce(rep_analysis.c.track_id, -1), func.coalesce(rep_analysis.c.play_index, -1),
+    unique=True,
 )
 
 camera_motion = Table(
@@ -343,7 +355,21 @@ tracks_meta = Table(
     Column("status", String),
     Column("track_id_conflict", Boolean),
     Column("play_index", Integer, nullable=True),
-    UniqueConstraint("video_id", "track_id", name="uq_tracks_meta_video_track"),
+    # DensityAwareMemoryTracker.reset_tracker() resets track_id to 0 for
+    # EVERY play (tracking_stage.py runs once per play_index) - without
+    # play_index in this table's identity, two different plays' track 0
+    # would collide on (video_id, track_id) and overwrite each other's
+    # summary row. Only one column (play_index) is nullable here (track_id
+    # is always a real int in this table), so the existing single-nullable-
+    # column partial-index pattern applies directly - see
+    # uq_pose_video_frame_null_track above.
+    UniqueConstraint("video_id", "track_id", "play_index", name="uq_tracks_meta_video_track_play"),
+    Index(
+        "uq_tracks_meta_video_track_null_play",
+        "video_id", "track_id",
+        unique=True,
+        postgresql_where=_sql_text("play_index IS NULL"),
+    ),
     Index("ix_tracks_meta_video_play", "video_id", "play_index"),
 )
 

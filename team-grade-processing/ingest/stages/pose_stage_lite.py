@@ -22,9 +22,10 @@ from ingest.exceptions import (
     QueueError,
 )
 from ingest.validation import VideoIdValidator
-from ingest.utils.firestore_utils import get_utc_timestamp, write_pose_batch
+from ingest.utils.firestore_utils import get_utc_timestamp, write_pose_batch, get_play, update_stage_status
 from processing.pose_track_matching import match_poses_to_tracks
 from ingest.s3_client import ensure_frames_local
+from ingest.frame_range import list_frame_paths_by_index
 
 logger = logging.getLogger(__name__)
 
@@ -122,8 +123,24 @@ def run_pose_stage_lite(
             "model": "mediapipe_lite",
         })
         
+        # -------- Scope to this play, if any --------
+
+        play_index = (payload or {}).get("play_index")
+        start_frame = end_frame = None
+        if play_index is not None:
+            play = get_play(firestore_client, video_id_safe, play_index)
+            if play is None:
+                error_code = "PLAY_NOT_FOUND"
+                logger.error(f"[{STAGE_NAME}] No plays row found", extra={
+                    "video_id": video_id_safe,
+                    "play_index": play_index,
+                    "error_code": error_code
+                })
+                return False, error_code
+            start_frame, end_frame = play["start_frame"], play["end_frame"]
+
         # -------- Load frames --------
-        
+
         try:
             frames_dir = settings.get_frames_dir(video_id_safe)
             # Defensive guard: normally already-local (same worker process as
@@ -144,23 +161,29 @@ def run_pose_stage_lite(
                     "error_code": error_code
                 })
                 return False, error_code
-            
-            frame_paths = sorted(frames_dir.glob("frame_*.jpg"))
-            
-            if not frame_paths:
+
+            # Keyed by the real frame_index parsed from each filename, not
+            # list position - see detection_stage.py's identical comment.
+            frame_paths_by_index = list_frame_paths_by_index(video_id_safe, start_frame, end_frame)
+            ordered_frames = sorted(frame_paths_by_index.items())
+            frame_paths = [p for _, p in ordered_frames]  # positional list kept for len()/progress logging only
+
+            if not ordered_frames:
                 error_code = "FRAMES_NOT_FOUND"
                 logger.error(f"[{STAGE_NAME}] No frames found", extra={
                     "video_id": video_id_safe,
                     "directory": str(frames_dir),
+                    "play_index": play_index,
                     "error_code": error_code
                 })
                 return False, error_code
-            
+
             logger.info(f"[{STAGE_NAME}] Found frames", extra={
                 "video_id": video_id_safe,
-                "frame_count": len(frame_paths),
+                "frame_count": len(ordered_frames),
+                "play_index": play_index,
             })
-        
+
         except Exception as e:
             error_code = "FRAMES_NOT_FOUND"
             logger.error(f"[{STAGE_NAME}] Failed to load frames: {e}", extra={
@@ -224,6 +247,8 @@ def run_pose_stage_lite(
                 tracks_ref = firestore_client.db.collection(
                     settings.COLLECTION_VIDEOS
                 ).document(video_id_safe).collection("tracks")
+                if play_index is not None:
+                    tracks_ref = tracks_ref.where("play_index", "==", play_index)
                 for doc in tracks_ref.stream():
                     data = doc.to_dict()
                     frame_tracks_by_index.setdefault(data["frame_index"], []).append(data)
@@ -260,7 +285,7 @@ def run_pose_stage_lite(
                 "video_id": video_id_safe,
             })
 
-            for idx, frame_path in enumerate(frame_paths):
+            for idx, frame_path in ordered_frames:
                 try:
                     frame = cv2.imread(str(frame_path))
                     if frame is None:
@@ -298,7 +323,8 @@ def run_pose_stage_lite(
                                     ),
                                     "landmarks": landmarks,
                                     "confidence_mean": float(confidence),
-                                    "created_at": get_utc_timestamp()
+                                    "created_at": get_utc_timestamp(),
+                                    "play_index": play_index,
                                 })
                     else:
                         # Single-athlete path - unchanged from before this pivot.
@@ -313,7 +339,8 @@ def run_pose_stage_lite(
                                 ),
                                 "landmarks": landmarks,
                                 "confidence_mean": float(confidence),
-                                "created_at": get_utc_timestamp()
+                                "created_at": get_utc_timestamp(),
+                                "play_index": play_index,
                             })
 
                     # Log progress
@@ -377,8 +404,6 @@ def run_pose_stage_lite(
         # -------- Write to Firestore --------
         
         try:
-            db = firestore_client.db
-
             # Final flush - whatever's left over from the last partial batch
             # (streaming_batch_size may not divide the frame count evenly).
             if poses:
@@ -392,14 +417,16 @@ def run_pose_stage_lite(
             # Update stage status with model info
             model_info = pose_estimator.get_model_info() if pose_estimator else {}
 
-            db.collection(settings.COLLECTION_VIDEOS).document(video_id_safe).update({
-                "stages.pose.status": "completed",
-                "stages.pose.total_poses": poses_written_total,
-                "stages.pose.model_type": model_info.get("model_type", "lite"),
-                "stages.pose.model_size_mb": model_info.get("model_size_mb"),
-                "stages.pose.confidence_threshold": confidence_threshold,
-                "stages.pose.completed_at": get_utc_timestamp(),
-            })
+            update_stage_status(
+                firestore_client, video_id_safe, STAGE_NAME, "completed",
+                metadata={
+                    "total_poses": poses_written_total,
+                    "model_type": model_info.get("model_type", "lite"),
+                    "model_size_mb": model_info.get("model_size_mb"),
+                    "confidence_threshold": confidence_threshold,
+                },
+                play_index=play_index,
+            )
 
             logger.info(f"[{STAGE_NAME}] Updated stage status", extra={
                 "video_id": video_id_safe,
@@ -423,6 +450,7 @@ def run_pose_stage_lite(
                 video_id_safe,
                 stage=STAGE_NEXT,
                 priority=priority,
+                play_index=play_index,
                 metadata={
                     "previous_stage": STAGE_NAME,
                     "pose_count": poses_written_total,

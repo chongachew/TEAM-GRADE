@@ -18,7 +18,7 @@ from ingest.exceptions import (
     ValidationError, StageExecutionError, FirestoreError, QueueError
 )
 from ingest.validation import VideoIdValidator
-from ingest.utils.firestore_utils import get_utc_timestamp
+from ingest.utils.firestore_utils import get_utc_timestamp, get_play, update_stage_status
 from processing.vectorized_traits import VectorizedTraitScorer, VectorizedBiomechanicsEngine
 
 logger = logging.getLogger(__name__)
@@ -213,34 +213,40 @@ def run_biomechanics_stage(
         return False, e.error_code
     
     try:
-        logger.info(f"[{STAGE_NAME}] Starting vectorized analysis", 
+        logger.info(f"[{STAGE_NAME}] Starting vectorized analysis",
                    extra={"video_id": video_id_safe})
-        
+
+        play_index = (payload or {}).get("play_index")
+        if play_index is not None and get_play(firestore_client, video_id_safe, play_index) is None:
+            logger.error(f"[{STAGE_NAME}] No plays row found", extra={
+                "video_id": video_id_safe, "play_index": play_index, "error_code": "PLAY_NOT_FOUND"
+            })
+            return False, "PLAY_NOT_FOUND"
+
         # ========== Step 1: Load all reps from Firestore ==========
         try:
             reps_ref = firestore_client.db.collection(
                 settings.COLLECTION_VIDEOS
             ).document(video_id_safe).collection(settings.COLLECTION_REPS)
+            if play_index is not None:
+                reps_ref = reps_ref.where("play_index", "==", play_index)
             reps_docs = list(reps_ref.stream())
-            
+
             if not reps_docs:
-                logger.warning(f"[{STAGE_NAME}] No reps found", 
+                logger.warning(f"[{STAGE_NAME}] No reps found",
                               extra={"video_id": video_id_safe})
                 # Mark stage complete even with no reps
-                firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(
-                    video_id_safe
-                ).update({
-                    f"stages.{STAGE_NAME}.status": "completed",
-                    f"stages.{STAGE_NAME}.completed_at": get_utc_timestamp(),
-                    f"stages.{STAGE_NAME}.rep_count": 0,
-                })
+                update_stage_status(
+                    firestore_client, video_id_safe, STAGE_NAME, "completed",
+                    metadata={"rep_count": 0}, play_index=play_index,
+                )
                 queue_manager.enqueue_video(
                     video_id_safe, stage=STAGE_NEXT,
-                    priority=settings.QUEUE_DEFAULT_PRIORITY,
+                    priority=settings.QUEUE_DEFAULT_PRIORITY, play_index=play_index,
                     metadata={"previous_stage": STAGE_NAME}
                 )
                 return True, None
-                
+
         except Exception as e:
             logger.error(f"[{STAGE_NAME}] Firestore read failed: {e}")
             return False, "FIRESTORE_ERROR"
@@ -273,6 +279,8 @@ def run_biomechanics_stage(
                 query = pose_ref.where("frame_index", ">=", start_frame).where(
                     "frame_index", "<=", end_frame
                 )
+                if play_index is not None:
+                    query = query.where("play_index", "==", play_index)
                 if track_id is not None:
                     # Requires a composite Firestore index (track_id ASC, frame_index
                     # ASC) - first run surfaces a FAILED_PRECONDITION error with a
@@ -352,6 +360,7 @@ def run_biomechanics_stage(
                 rep_analysis = {
                     "rep_index": rep_index,
                     "track_id": rep_track_ids[i],
+                    "play_index": play_index,
                     "traits": {
                         trait_names[j]: float(trait_scores[i, j])
                         for j in range(len(trait_names))
@@ -389,17 +398,17 @@ def run_biomechanics_stage(
                 batch.commit()
             
             # Update video document with overall statistics
-            firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(
-                video_id_safe
-            ).update({
-                f"stages.{STAGE_NAME}.status": "completed",
-                f"stages.{STAGE_NAME}.analysis_count": len(analysis_data),
-                f"stages.{STAGE_NAME}.overall_grade": overall_grade,
-                f"stages.{STAGE_NAME}.letter_grade": letter_grade,
-                f"stages.{STAGE_NAME}.completed_at": get_utc_timestamp(),
-                # Store method used (for benchmarking)
-                f"stages.{STAGE_NAME}.method": "vectorized",
-            })
+            update_stage_status(
+                firestore_client, video_id_safe, STAGE_NAME, "completed",
+                metadata={
+                    "analysis_count": len(analysis_data),
+                    "overall_grade": overall_grade,
+                    "letter_grade": letter_grade,
+                    # Store method used (for benchmarking)
+                    "method": "vectorized",
+                },
+                play_index=play_index,
+            )
             
             logger.info(
                 f"[{STAGE_NAME}] Wrote {len(analysis_data)} analysis records to Firestore"
@@ -413,7 +422,7 @@ def run_biomechanics_stage(
         try:
             queue_manager.enqueue_video(
                 video_id_safe, stage=STAGE_NEXT,
-                priority=settings.QUEUE_DEFAULT_PRIORITY,
+                priority=settings.QUEUE_DEFAULT_PRIORITY, play_index=play_index,
                 metadata={"previous_stage": STAGE_NAME}
             )
         except Exception as e:

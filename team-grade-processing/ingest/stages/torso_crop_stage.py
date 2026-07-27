@@ -15,8 +15,9 @@ from ingest.exceptions import (
     QueueError,
 )
 from ingest.validation import VideoIdValidator
-from ingest.utils.firestore_utils import get_utc_timestamp, write_torso_crops_batch
+from ingest.utils.firestore_utils import get_utc_timestamp, write_torso_crops_batch, get_play, update_stage_status
 from ingest.s3_client import ensure_frames_local, upload_directory, torso_prefix
+from ingest.frame_range import list_frame_paths_by_index
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +78,20 @@ def run_torso_crop_stage(
         import cv2
         from processing.torso_cropper import TorsoCropper
 
-        # Get frames directory
-        frames_dir = settings.get_frames_dir(video_id_safe)
+        play_index = (payload or {}).get("play_index")
+        start_frame = end_frame = None
+        if play_index is not None:
+            play = get_play(firestore_client, video_id_safe, play_index)
+            if play is None:
+                error_code = "PLAY_NOT_FOUND"
+                logger.error(f"[{STAGE_NAME}] No plays row found", extra={
+                    "video_id": video_id_safe,
+                    "play_index": play_index,
+                    "error_code": error_code
+                })
+                return False, error_code
+            start_frame, end_frame = play["start_frame"], play["end_frame"]
+
         # Defensive guard: this stage runs in the same worker process as
         # frame_extraction on the common path (frames already local), but a
         # retry could in principle be picked up by a different worker
@@ -89,13 +102,18 @@ def run_torso_crop_stage(
             logger.debug(f"[{STAGE_NAME}] S3 frames fallback unavailable (non-fatal): {e}", extra={
                 "video_id": video_id_safe,
             })
-        frame_paths = sorted(frames_dir.glob("frame_*.jpg"))
-        
-        if not frame_paths:
+        # Dict lookup by real frame_index, not positional `frame_paths[frame_index]`
+        # indexing - the latter silently assumed frame_paths was the full,
+        # contiguous, zero-based frame list, which breaks once this is
+        # scoped to one play's subset of frames.
+        frame_paths_by_index = list_frame_paths_by_index(video_id_safe, start_frame, end_frame)
+
+        if not frame_paths_by_index:
             error_code = "FRAMES_NOT_FOUND"
             logger.error(f"[{STAGE_NAME}] No frames found", extra={
                 "video_id": video_id_safe,
-                "directory": str(frames_dir),
+                "directory": str(settings.get_frames_dir(video_id_safe)),
+                "play_index": play_index,
                 "error_code": error_code
             })
             return False, error_code
@@ -106,7 +124,8 @@ def run_torso_crop_stage(
 
         logger.info(f"[{STAGE_NAME}] Found frames", extra={
             "video_id": video_id_safe,
-            "frame_count": len(frame_paths),
+            "frame_count": len(frame_paths_by_index),
+            "play_index": play_index,
         })
 
         # Initialize torso cropper
@@ -125,6 +144,8 @@ def run_torso_crop_stage(
             poses_ref = firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(
                 video_id_safe
             ).collection("pose")
+            if play_index is not None:
+                poses_ref = poses_ref.where("play_index", "==", play_index)
             poses_docs = list(poses_ref.stream())
             
             if not poses_docs:
@@ -160,10 +181,11 @@ def run_torso_crop_stage(
                     landmarks = pose_data.get("landmarks", [])
                     track_id = pose_data.get("track_id")  # None on the single-athlete path
 
-                    if frame_index >= len(frame_paths):
+                    frame_path = frame_paths_by_index.get(frame_index)
+                    if frame_path is None:
                         continue
 
-                    frame = cv2.imread(str(frame_paths[frame_index]))
+                    frame = cv2.imread(str(frame_path))
                     if frame is None:
                         logger.debug(f"[{STAGE_NAME}] Skipped unreadable frame: {frame_index}")
                         continue
@@ -190,7 +212,8 @@ def run_torso_crop_stage(
                             "frame_index": frame_index,
                             "crop_path": str(crop_path.relative_to(settings.PROJECT_ROOT)),
                             "crop_box": crop_box,
-                            "created_at": get_utc_timestamp()
+                            "created_at": get_utc_timestamp(),
+                            "play_index": play_index,
                         }
                         if track_id is not None:
                             crop_doc["track_id"] = track_id
@@ -249,11 +272,11 @@ def run_torso_crop_stage(
                 })
             
             # Update stage status
-            firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(video_id_safe).update({
-                "stages.torso_crop.status": "completed",
-                "stages.torso_crop.total_crops": crops_created,
-                "stages.torso_crop.completed_at": get_utc_timestamp(),
-            })
+            update_stage_status(
+                firestore_client, video_id_safe, STAGE_NAME, "completed",
+                metadata={"total_crops": crops_created},
+                play_index=play_index,
+            )
         
         except Exception as e:
             error_code = "FIRESTORE_ERROR"
@@ -269,6 +292,7 @@ def run_torso_crop_stage(
                 video_id_safe,
                 stage=STAGE_NEXT,
                 priority=settings.QUEUE_DEFAULT_PRIORITY,
+                play_index=play_index,
                 metadata={"previous_stage": STAGE_NAME}
             )
             if not success:

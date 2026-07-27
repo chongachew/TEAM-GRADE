@@ -77,7 +77,8 @@ def test_multiplayer_path_writes_poses_matched_to_tracks(tmp_path, monkeypatch):
         return len(poses)
 
     with patch("processing.lightweight_pose.PoseEstimatorFactory.create", return_value=_make_multiplayer_estimator()), \
-         patch.object(pose_stage_lite, "write_pose_batch", side_effect=_fake_write_pose_batch):
+         patch.object(pose_stage_lite, "write_pose_batch", side_effect=_fake_write_pose_batch), \
+         patch.object(pose_stage_lite, "update_stage_status") as mock_update_status:
         success, error = pose_stage_lite.run_pose_stage_lite(mock_firestore, "dQw4w9WgXcQ", mock_queue)
 
     assert success is True, error
@@ -86,5 +87,5 @@ def test_multiplayer_path_writes_poses_matched_to_tracks(tmp_path, monkeypatch):
     assert len(written_poses) == 2
     assert sorted(p["track_id"] for p in written_poses) == [5, 9]
 
-    update_call = mock_firestore.db.collection.return_value.document.return_value.update.call_args[0][0]
-    assert update_call["stages.pose.total_poses"] == 2
+    _, kwargs = mock_update_status.call_args
+    assert kwargs["metadata"]["total_poses"] == 2

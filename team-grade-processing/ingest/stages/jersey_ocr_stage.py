@@ -15,7 +15,13 @@ from ingest.exceptions import (
     QueueError,
 )
 from ingest.validation import VideoIdValidator
-from ingest.utils.firestore_utils import get_utc_timestamp, write_jersey_number, write_jersey_number_for_track
+from ingest.utils.firestore_utils import (
+    get_utc_timestamp,
+    write_jersey_number,
+    write_jersey_number_for_track,
+    get_play,
+    update_stage_status,
+)
 from ingest.s3_client import ensure_torso_crops_local
 
 logger = logging.getLogger(__name__)
@@ -101,26 +107,39 @@ def run_jersey_ocr_stage(
         import cv2
         from processing.jersey_ocr import JerseyOCR
 
+        play_index = (payload or {}).get("play_index")
+        if play_index is not None and get_play(firestore_client, video_id_safe, play_index) is None:
+            error_code = "PLAY_NOT_FOUND"
+            logger.error(f"[{STAGE_NAME}] No plays row found", extra={
+                "video_id": video_id_safe,
+                "play_index": play_index,
+                "error_code": error_code
+            })
+            return False, error_code
+
         # Get torso crop metadata from Firestore
         try:
             crops_ref = firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(
                 video_id_safe
             ).collection("torso")
+            if play_index is not None:
+                crops_ref = crops_ref.where("play_index", "==", play_index)
             crops_docs = list(crops_ref.stream())
-            
+
             if not crops_docs:
                 logger.warning(f"[{STAGE_NAME}] No torso crops found", extra={
                     "video_id": video_id_safe,
                 })
                 # Skip to next stage
-                firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(video_id_safe).update({
-                    f"stages.{STAGE_NAME}.status": "completed",
-                    f"stages.{STAGE_NAME}.completed_at": get_utc_timestamp(),
-                })
+                update_stage_status(
+                    firestore_client, video_id_safe, STAGE_NAME, "completed",
+                    play_index=play_index,
+                )
                 queue_manager.enqueue_video(
                     video_id_safe,
                     stage=STAGE_NEXT,
                     priority=settings.QUEUE_DEFAULT_PRIORITY,
+                    play_index=play_index,
                     metadata={"previous_stage": STAGE_NAME, "tracks_with_jersey_detected": 0}
                 )
                 return True, None
@@ -263,6 +282,7 @@ def run_jersey_ocr_stage(
                     write_jersey_number_for_track(
                         firestore_client, video_id_safe, track_id,
                         detection["jersey_number"], detection["confidence"], detection["frame_index"],
+                        play_index=play_index,
                     )
                 else:
                     write_jersey_number(
@@ -279,12 +299,14 @@ def run_jersey_ocr_stage(
                 })
 
             # Update stage status
-            firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(video_id_safe).update({
-                f"stages.{STAGE_NAME}.status": "completed",
-                f"stages.{STAGE_NAME}.tracks_processed": len(crops_by_track),
-                f"stages.{STAGE_NAME}.tracks_with_jersey_detected": len(best_detections),
-                f"stages.{STAGE_NAME}.completed_at": get_utc_timestamp(),
-            })
+            update_stage_status(
+                firestore_client, video_id_safe, STAGE_NAME, "completed",
+                metadata={
+                    "tracks_processed": len(crops_by_track),
+                    "tracks_with_jersey_detected": len(best_detections),
+                },
+                play_index=play_index,
+            )
 
         except Exception as e:
             error_code = "FIRESTORE_ERROR"
@@ -300,6 +322,7 @@ def run_jersey_ocr_stage(
                 video_id_safe,
                 stage=STAGE_NEXT,
                 priority=settings.QUEUE_DEFAULT_PRIORITY,
+                play_index=play_index,
                 metadata={
                     "previous_stage": STAGE_NAME,
                     "tracks_with_jersey_detected": len(best_detections),

@@ -13,6 +13,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from config import settings
+from unittest.mock import patch
+
+from ingest.stages import biomechanics_stage_vectorized
 from ingest.stages.biomechanics_stage_vectorized import (
     _extract_pose_features,
     run_biomechanics_stage,
@@ -157,3 +160,61 @@ def test_writes_track_id_into_each_analysis_record():
     written_by_rep_index = {rep["rep_index"]: rep for rep in written}
     assert written_by_rep_index[0]["track_id"] == 5
     assert written_by_rep_index[1]["track_id"] == 9
+
+
+def test_run_biomechanics_stage_scopes_to_one_play():
+    rep_docs = [
+        FakeDoc({"rep_index": 0, "track_id": None, "start_frame": 3, "end_frame": 5, "play_index": 1}),
+    ]
+    pose_docs = [
+        FakeDoc({"frame_index": i, "landmarks": _make_frame(0.3 + i * 0.03, 0.3 + i * 0.05)})
+        for i in (3, 4, 5)
+    ]
+
+    def collection_side_effect(name):
+        if name == settings.COLLECTION_REPS:
+            reps_mock = MagicMock()
+            reps_mock.where.return_value.stream.return_value = rep_docs
+            return reps_mock
+        if name == settings.COLLECTION_POSE:
+            return _make_pose_collection_mock(pose_docs)
+        return MagicMock()
+
+    doc_mock = MagicMock()
+    doc_mock.collection.side_effect = collection_side_effect
+
+    mock_firestore = MagicMock()
+    mock_firestore.db.collection.return_value.document.return_value = doc_mock
+    mock_batch = MagicMock()
+    mock_firestore.db.batch.return_value = mock_batch
+
+    mock_queue = MagicMock()
+    mock_queue.enqueue_video.return_value = True
+
+    with patch.object(biomechanics_stage_vectorized, "get_play", return_value={"start_frame": 3, "end_frame": 5}), \
+         patch.object(biomechanics_stage_vectorized, "update_stage_status") as mock_update_status:
+        success, error = run_biomechanics_stage(
+            mock_firestore, "dQw4w9WgXcQ", mock_queue, payload={"play_index": 1}
+        )
+
+    assert success is True, error
+    written = [call.args[1] for call in mock_batch.set.call_args_list]
+    assert len(written) == 1
+    assert written[0]["play_index"] == 1
+
+    assert mock_update_status.call_args.kwargs["play_index"] == 1
+    assert mock_queue.enqueue_video.call_args.kwargs["play_index"] == 1
+
+
+def test_run_biomechanics_stage_missing_play_row_returns_error():
+    mock_firestore = MagicMock()
+    mock_queue = MagicMock()
+
+    with patch.object(biomechanics_stage_vectorized, "get_play", return_value=None):
+        success, error = run_biomechanics_stage(
+            mock_firestore, "dQw4w9WgXcQ", mock_queue, payload={"play_index": 4}
+        )
+
+    assert success is False
+    assert error == "PLAY_NOT_FOUND"
+    mock_queue.enqueue_video.assert_not_called()

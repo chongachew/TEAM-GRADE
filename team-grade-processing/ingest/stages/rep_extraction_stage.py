@@ -15,7 +15,7 @@ from ingest.exceptions import (
     QueueError,
 )
 from ingest.validation import VideoIdValidator
-from ingest.utils.firestore_utils import get_utc_timestamp, write_reps_batch
+from ingest.utils.firestore_utils import get_utc_timestamp, write_reps_batch, get_play, update_stage_status
 
 logger = logging.getLogger(__name__)
 
@@ -63,19 +63,27 @@ def run_rep_extraction_stage(
 
         from processing.rep_extraction import segment_reps_from_pose_docs
 
+        play_index = (payload or {}).get("play_index")
+        if play_index is not None and get_play(firestore_client, video_id_safe, play_index) is None:
+            logger.error(f"[{STAGE_NAME}] No plays row found", extra={
+                "video_id": video_id_safe, "play_index": play_index, "error_code": "PLAY_NOT_FOUND"
+            })
+            return False, "PLAY_NOT_FOUND"
+
         try:
             poses_ref = firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(
                 video_id_safe).collection("pose")
+            if play_index is not None:
+                poses_ref = poses_ref.where("play_index", "==", play_index)
             poses_docs = list(poses_ref.stream())
-            
+
             if not poses_docs:
                 logger.warning(f"[{STAGE_NAME}] No poses found", extra={"video_id": video_id_safe})
-                firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(video_id_safe).update({
-                    f"stages.{STAGE_NAME}.status": "completed",
-                    f"stages.{STAGE_NAME}.completed_at": get_utc_timestamp(),
-                })
+                update_stage_status(
+                    firestore_client, video_id_safe, STAGE_NAME, "completed", play_index=play_index,
+                )
                 queue_manager.enqueue_video(video_id_safe, stage=STAGE_NEXT,
-                    priority=settings.QUEUE_DEFAULT_PRIORITY,
+                    priority=settings.QUEUE_DEFAULT_PRIORITY, play_index=play_index,
                     metadata={"previous_stage": STAGE_NAME, "total_reps": 0})
                 return True, None
         except Exception as e:
@@ -95,21 +103,22 @@ def run_rep_extraction_stage(
 
         try:
             if reps_data:
+                for rep in reps_data:
+                    rep["play_index"] = play_index
                 write_reps_batch(firestore_client, video_id_safe, reps_data)
 
-            firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(video_id_safe).update({
-                f"stages.{STAGE_NAME}.status": "completed",
-                f"stages.{STAGE_NAME}.total_reps": len(reps_data),
-                f"stages.{STAGE_NAME}.tracks_processed": tracks_processed,
-                f"stages.{STAGE_NAME}.completed_at": get_utc_timestamp(),
-            })
+            update_stage_status(
+                firestore_client, video_id_safe, STAGE_NAME, "completed",
+                metadata={"total_reps": len(reps_data), "tracks_processed": tracks_processed},
+                play_index=play_index,
+            )
         except Exception as e:
             logger.error(f"[{STAGE_NAME}] Firestore write failed", extra={"error_code": "FIRESTORE_ERROR"})
             return False, "FIRESTORE_ERROR"
 
         try:
             queue_manager.enqueue_video(video_id_safe, stage=STAGE_NEXT,
-                priority=settings.QUEUE_DEFAULT_PRIORITY,
+                priority=settings.QUEUE_DEFAULT_PRIORITY, play_index=play_index,
                 metadata={"previous_stage": STAGE_NAME, "total_reps": len(reps_data)})
         except Exception as e:
             logger.error(f"[{STAGE_NAME}] Queue failed", extra={"error_code": "QUEUE_ERROR"})
