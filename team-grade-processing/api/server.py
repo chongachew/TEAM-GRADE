@@ -81,14 +81,14 @@ from ingest.ingest_worker import IngestWorker
 from ingest.firestore_client import FirestoreClient, VideoStatus, IngestStage
 from ingest.postgres_client import PostgresClient
 from ingest.youtube_metadata import YouTubeMetadataExtractor
-from ingest.utils.firestore_utils import COLLECTION_TRACKS, COLLECTION_TRACKS_META
+from ingest.utils.firestore_utils import COLLECTION_TRACKS, COLLECTION_TRACKS_META, COLLECTION_PLAYS
 from ingest.stages.biomechanics_stage_vectorized import _extract_pose_features, _load_trait_configs
 from processing.vectorized_traits import VectorizedTraitScorer
 import numpy as np
 
 # Import centralized constants
 try:
-    from config.constants import ALL_STAGES, STAGE_STATUS_SKIPPED
+    from config.constants import ALL_STAGES, STAGE_STATUS_SKIPPED, TOTAL_STAGES
 except ImportError:
     # Fallback if constants not available
     ALL_STAGES = [
@@ -96,6 +96,7 @@ except ImportError:
         "torso_crop", "jersey_ocr", "rep_extraction", "biomechanics", "complete"
     ]
     STAGE_STATUS_SKIPPED = "skipped"
+    TOTAL_STAGES = len(ALL_STAGES)
 
 from config import settings
 # Reuses the exact same conditional this stage already computes for a normal
@@ -804,12 +805,25 @@ async def get_status(video_id: str) -> StatusResponse:
         
         status = video_data.get("status", "unknown")
         error = video_data.get("error", None)
-        
-        # Calculate progress percentage based on completed stages
         stages_data = video_data.get("stages", {})
-        completed_count = sum(1 for s in stages_data.values() if s.get("status") == "completed")
-        progress = min(100, int((completed_count / 9) * 100))
-        
+
+        # Progress: once play_detection has run, remaining stages apply per
+        # play, not per video (a stage can be "completed" for one play and
+        # still "pending" for another at the same moment) - the old
+        # whole-video stage-count fraction is structurally wrong once plays
+        # exist, so prefer play-completion fraction when available.
+        plays_ref = firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(
+            safe_video_id
+        ).collection(COLLECTION_PLAYS)
+        plays_docs = [d.to_dict() for d in plays_ref.stream()]
+
+        if plays_docs:
+            completed_plays = sum(1 for p in plays_docs if p.get("status") == "completed")
+            progress = min(100, int((completed_plays / len(plays_docs)) * 100))
+        else:
+            completed_count = sum(1 for s in stages_data.values() if s.get("status") == "completed")
+            progress = min(100, int((completed_count / TOTAL_STAGES) * 100))
+
         logger.info(f"Video {safe_video_id} status: {status}, progress: {progress}%")
         
         return StatusResponse(
@@ -1001,6 +1015,84 @@ async def get_analysis(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve analysis: {str(e)}"
+        )
+
+
+@app.get("/api/plays/{video_id}")
+async def get_plays(video_id: str) -> Dict[str, Any]:
+    """
+    Get per-play boundaries/status for a video (per-play redesign, Phase D),
+    plus the video-level grade aggregate once it's been computed.
+
+    Args:
+        video_id: YouTube video ID (will be validated)
+
+    Returns:
+        {"plays": [{"play_index", "start_frame", "end_frame", "status",
+                    "detection_method"}, ...],
+         "overall_grade": float | None, "letter_grade": str | None}
+        Empty "plays" list (not a 404) if the video exists but
+        play_detection hasn't run yet, or this is a single-athlete-mode
+        video (play_detection never runs in that mode) - same "not found
+        vs. not ready" distinction get_analysis already makes.
+        overall_grade/letter_grade are None until complete_stage.py sets
+        them (see ingest/stages/complete_stage.py::_compute_overall_grade).
+
+    Raises:
+        HTTPException: If the video itself doesn't exist
+    """
+    try:
+        from config import settings
+        safe_video_id = settings.sanitize_id(video_id)
+    except (ValueError, ImportError) as e:
+        logger.warning(f"Invalid video_id format: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid video_id format"
+        )
+
+    logger.info(f"GET /api/plays/{safe_video_id}")
+
+    if not firestore_client:
+        raise HTTPException(
+            status_code=503,
+            detail="Firestore client not available"
+        )
+
+    try:
+        video_data = firestore_client.get_video_status(safe_video_id)
+
+        if not video_data:
+            logger.warning(f"Video not found: {safe_video_id}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Video {safe_video_id} not found"
+            )
+
+        plays_ref = (
+            firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+            .document(safe_video_id)
+            .collection(COLLECTION_PLAYS)
+        )
+        plays = sorted(
+            (doc.to_dict() for doc in plays_ref.stream()),
+            key=lambda p: p.get("play_index", 0),
+        )
+
+        logger.info(f"Retrieved {len(plays)} play(s) for {safe_video_id}")
+        return {
+            "plays": plays,
+            "overall_grade": video_data.get("overall_grade"),
+            "letter_grade": video_data.get("letter_grade"),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[FAIL] Plays retrieval error for {safe_video_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve plays: {str(e)}"
         )
 
 

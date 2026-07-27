@@ -223,7 +223,38 @@ class TestVideoStatusEndpoint:
             assert data["video_id"] == "dQw4w9WgXcQ"
             assert "status" in data
             assert "stages" in data
-            assert data["progress"] == 22  # 2 of 9 stages completed in the fixture
+            assert data["progress"] == 13  # 2 of 15 real stages completed in the fixture (no plays yet)
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_get_status_uses_play_completion_fraction_when_plays_exist(self, client, mock_video_document):
+        """Once play_detection has run, remaining stages apply per-play, not
+        per-video - progress must come from play completion fraction, not
+        the (now potentially misleading) whole-video stage-count fraction."""
+        play_docs = []
+        for play_index, status in [(0, "completed"), (1, "completed"), (2, "processing"), (3, "pending")]:
+            doc = MagicMock()
+            doc.to_dict.return_value = {"play_index": play_index, "status": status}
+            play_docs.append(doc)
+
+        with patch("api.server.firestore_client") as mock_fs:
+            mock_fs.get_video_status.return_value = mock_video_document
+
+            def collection_side_effect(name):
+                col_mock = MagicMock()
+                if name == "plays":
+                    col_mock.stream.return_value = play_docs
+                return col_mock
+
+            doc_mock = MagicMock()
+            doc_mock.collection.side_effect = collection_side_effect
+            mock_fs.db.collection.return_value.document.return_value = doc_mock
+
+            response = client.get("/api/ingest/dQw4w9WgXcQ/status")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["progress"] == 50  # 2 of 4 plays completed
 
     @pytest.mark.endpoints
     @pytest.mark.integration

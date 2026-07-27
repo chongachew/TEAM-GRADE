@@ -85,6 +85,13 @@ videos = Table(
     # one-off "your film is ready" notification, then left as-is (not
     # cleared) - it's a fire-once trigger, not a subscription.
     Column("notify_email", Text),
+    # Video-level grade aggregate (Phase D of the per-play redesign): the
+    # mean of every rep_analysis row's overall_grade for this video,
+    # across every play - set once by complete_stage.py right before it
+    # marks the video completed. NULL until then. See
+    # complete_stage.py's _compute_overall_grade().
+    Column("overall_grade", Float, nullable=True),
+    Column("letter_grade", String, nullable=True),
     Column("created_at", TIMESTAMP(timezone=True)),
     Column("updated_at", TIMESTAMP(timezone=True)),
     Column("completed_at", TIMESTAMP(timezone=True)),

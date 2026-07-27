@@ -4,8 +4,9 @@ Marks video processing as complete, logs summary statistics, and finalizes all d
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 
+import numpy as np
 import requests
 
 from config import settings
@@ -18,6 +19,41 @@ from ingest.validation import VideoIdValidator
 from ingest.utils.firestore_utils import get_utc_timestamp, mark_play_status, count_incomplete_plays
 
 logger = logging.getLogger(__name__)
+
+
+def _compute_overall_grade(firestore_client, video_id: str) -> Tuple[Optional[float], Optional[str]]:
+    """Video-level grade aggregate: the mean of every rep_analysis row's
+    overall_grade for this video, across every play (or every rep of a
+    single-athlete-mode video, where play_index is simply NULL - no mode
+    branching needed since the query is just WHERE video_id = X).
+
+    Mathematically the same formula VectorizedTraitScorer.aggregate_traits()
+    already uses per-play/per-video (float(np.mean(scores)) over the whole
+    reps x traits matrix, called with no weights) - since every rep shares
+    the same fixed trait_names set, mean-of-per-rep-means equals
+    mean-of-everything, so this is that same formula extended across plays,
+    not a new one.
+
+    Returns (None, None) if no analysis exists yet (nothing to aggregate).
+    """
+    from processing.vectorized_traits import VectorizedTraitScorer
+
+    analysis_ref = (
+        firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+        .document(video_id)
+        .collection(settings.COLLECTION_ANALYSIS)
+    )
+    grades = [
+        doc.to_dict().get("overall_grade")
+        for doc in analysis_ref.stream()
+    ]
+    grades = [g for g in grades if g is not None]
+    if not grades:
+        return None, None
+
+    overall_grade = float(np.mean(grades))
+    letter_grade = VectorizedTraitScorer._numeric_to_letter(np.array([overall_grade]))[0]
+    return overall_grade, letter_grade
 
 
 def _notify_film_ready(video_id: str, email: str) -> None:
@@ -215,18 +251,24 @@ def run_complete_stage(
         
         try:
             current_time = get_utc_timestamp()
-            
+
+            overall_grade, letter_grade = _compute_overall_grade(firestore_client, video_id_safe)
+
             # Update video status to completed
             video_ref.update({
                 "status": "completed",
                 "stages.complete.status": "completed",
                 "stages.complete.completed_at": current_time,
-                "completed_at": current_time
+                "completed_at": current_time,
+                "overall_grade": overall_grade,
+                "letter_grade": letter_grade,
             })
-            
+
             logger.info(f"[{STAGE_NAME}] Video marked as completed in Firestore", extra={
                 "video_id": video_id_safe,
                 "timestamp": current_time,
+                "overall_grade": overall_grade,
+                "letter_grade": letter_grade,
             })
         
         except Exception as e:

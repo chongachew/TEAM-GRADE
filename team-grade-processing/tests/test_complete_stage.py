@@ -81,3 +81,75 @@ def test_video_doc_not_found_fails_before_play_guard():
 
     assert success is False
     assert error == "VIDEO_DOC_NOT_FOUND"
+
+
+def _make_analysis_doc(overall_grade):
+    doc = MagicMock()
+    doc.to_dict.return_value = {"overall_grade": overall_grade}
+    return doc
+
+
+def test_single_athlete_mode_computes_overall_grade():
+    """play_index is None - falls straight through to the unconditional
+    completion path, which now also computes the video-level grade."""
+    mock_firestore, video_ref = _mock_firestore()
+    mock_firestore.db.collection.return_value.document.return_value.collection.return_value.stream.return_value = [
+        _make_analysis_doc(80.0), _make_analysis_doc(90.0),
+    ]
+    mock_queue = MagicMock()
+
+    success, error = complete_stage.run_complete_stage(mock_firestore, "dQw4w9WgXcQ", mock_queue)
+
+    assert success is True, error
+    args = video_ref.update.call_args[0][0]
+    assert args["overall_grade"] == 85.0
+    assert args["letter_grade"] == "B"
+
+
+def test_last_play_computes_overall_grade_across_all_plays():
+    mock_firestore, video_ref = _mock_firestore()
+    mock_firestore.db.collection.return_value.document.return_value.collection.return_value.stream.return_value = [
+        _make_analysis_doc(60.0), _make_analysis_doc(100.0),
+    ]
+    mock_queue = MagicMock()
+
+    with patch.object(complete_stage, "mark_play_status"), \
+         patch.object(complete_stage, "count_incomplete_plays", return_value=0):
+        success, error = complete_stage.run_complete_stage(
+            mock_firestore, "dQw4w9WgXcQ", mock_queue, payload={"play_index": 1}
+        )
+
+    assert success is True, error
+    args = video_ref.update.call_args[0][0]
+    assert args["overall_grade"] == 80.0
+    assert args["letter_grade"] == "B"
+
+
+def test_no_analysis_yet_writes_none_grade():
+    mock_firestore, video_ref = _mock_firestore()
+    mock_queue = MagicMock()
+
+    success, error = complete_stage.run_complete_stage(mock_firestore, "dQw4w9WgXcQ", mock_queue)
+
+    assert success is True, error
+    args = video_ref.update.call_args[0][0]
+    assert args["overall_grade"] is None
+    assert args["letter_grade"] is None
+
+
+def test_first_play_completing_does_not_compute_grade_yet():
+    """The no-op-for-pending-plays path must not touch the video row at
+    all, so it must not compute/write a grade either."""
+    mock_firestore, video_ref = _mock_firestore()
+    mock_queue = MagicMock()
+
+    with patch.object(complete_stage, "mark_play_status"), \
+         patch.object(complete_stage, "count_incomplete_plays", return_value=1), \
+         patch.object(complete_stage, "_compute_overall_grade") as mock_compute:
+        success, error = complete_stage.run_complete_stage(
+            mock_firestore, "dQw4w9WgXcQ", mock_queue, payload={"play_index": 0}
+        )
+
+    assert success is True, error
+    mock_compute.assert_not_called()
+    video_ref.update.assert_not_called()
