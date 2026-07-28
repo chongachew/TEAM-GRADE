@@ -27,7 +27,7 @@ from collections import deque
 from sqlalchemy import select, update as sa_update, delete as sa_delete, func, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from ingest.db_schema import ingestion_queue, video_stages, videos
+from ingest.db_schema import ingestion_queue, video_stages, videos, plays
 
 logger = logging.getLogger(__name__)
 
@@ -374,6 +374,8 @@ class QueueManager:
         try:
             qid = int(queue_doc_id)
             now = _now()
+            finalize_check_video_id = None
+            finalize_check_play_index = None
             with self.engine.begin() as conn:
                 row = conn.execute(
                     select(
@@ -445,14 +447,52 @@ class QueueManager:
                         set_={"status": "failed", "extra": {"error": error_message}},
                     )
                     conn.execute(video_stage_stmt)
-                    conn.execute(
-                        sa_update(videos)
-                        .where(videos.c.video_id == row["video_id"])
-                        .values(status="failed", error=error_message, updated_at=now)
-                    )
+
+                    # Per-play redesign: a permanently-failed PLAY must not
+                    # fail the WHOLE video - this cascade predates play_index
+                    # entirely (written for the original one-play-per-video
+                    # model) and was never updated when Phase B/C introduced
+                    # per-play processing. Mark just that play's own row
+                    # failed instead; the other, successfully completed
+                    # plays must still be able to reach a real "completed"
+                    # video.
+                    if row["play_index"] is not None:
+                        conn.execute(
+                            sa_update(plays)
+                            .where(plays.c.video_id == row["video_id"])
+                            .where(plays.c.play_index == row["play_index"])
+                            .values(status="failed")
+                        )
+                        # Checked after this transaction commits (below) -
+                        # nothing else will ever re-trigger complete_stage.py
+                        # for this video otherwise (a permanently-failed play
+                        # never reaches its own biomechanics stage to
+                        # self-enqueue "complete").
+                        finalize_check_video_id = row["video_id"]
+                        finalize_check_play_index = row["play_index"]
+                    else:
+                        conn.execute(
+                            sa_update(videos)
+                            .where(videos.c.video_id == row["video_id"])
+                            .values(status="failed", error=error_message, updated_at=now)
+                        )
 
                 result = conn.execute(stmt)
-                return result.rowcount > 0
+                ok = result.rowcount > 0
+
+            if ok and finalize_check_video_id is not None:
+                from ingest.utils.firestore_utils import count_incomplete_plays
+                from ingest.stages.complete_stage import _finalize_video
+
+                pending = count_incomplete_plays(self.postgres, finalize_check_video_id)
+                if pending == 0:
+                    logger.info(
+                        f"[OK] Play {finalize_check_play_index} failure was the last pending play "
+                        f"for {finalize_check_video_id} - finalizing video"
+                    )
+                    _finalize_video(self.postgres, finalize_check_video_id)
+
+            return ok
 
         except Exception as e:
             logger.error(f"Failed to mark as failed: {e}")

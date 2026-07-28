@@ -56,6 +56,39 @@ def _compute_overall_grade(firestore_client, video_id: str) -> Tuple[Optional[fl
     return overall_grade, letter_grade
 
 
+def _finalize_video(firestore_client, video_id_safe: str) -> None:
+    """Marks the video fully completed: computes the cross-play grade
+    aggregate and flips videos.status - the actual "mark pipeline as
+    complete" write. Shared by run_complete_stage's own last-play path AND
+    queue_manager.mark_failed's play-permanent-failure path - a play that
+    exhausts its retries (e.g. no pose data - nothing to analyze in a
+    kickoff/replay-only play) still needs to let the OTHER, successfully
+    completed plays' video finalize once that failed play was the last one
+    blocking completion. See count_incomplete_plays(), which treats
+    "failed" the same as "completed" - a resolved terminal state, not one
+    that blocks the video forever.
+    """
+    current_time = get_utc_timestamp()
+    overall_grade, letter_grade = _compute_overall_grade(firestore_client, video_id_safe)
+
+    video_ref = firestore_client.db.collection(settings.COLLECTION_VIDEOS).document(video_id_safe)
+    video_ref.update({
+        "status": "completed",
+        "stages.complete.status": "completed",
+        "stages.complete.completed_at": current_time,
+        "completed_at": current_time,
+        "overall_grade": overall_grade,
+        "letter_grade": letter_grade,
+    })
+
+    logger.info(f"[{STAGE_NAME}] Video marked as completed in Firestore", extra={
+        "video_id": video_id_safe,
+        "timestamp": current_time,
+        "overall_grade": overall_grade,
+        "letter_grade": letter_grade,
+    })
+
+
 def _notify_film_ready(video_id: str, email: str) -> None:
     """Fire-and-forget call into Bridge Athletics' Resend-backed email
     capability - this project has no email infra of its own. Same isolation
@@ -248,29 +281,10 @@ def run_complete_stage(
             )
 
         # -------- Mark pipeline as complete --------
-        
+
         try:
-            current_time = get_utc_timestamp()
+            _finalize_video(firestore_client, video_id_safe)
 
-            overall_grade, letter_grade = _compute_overall_grade(firestore_client, video_id_safe)
-
-            # Update video status to completed
-            video_ref.update({
-                "status": "completed",
-                "stages.complete.status": "completed",
-                "stages.complete.completed_at": current_time,
-                "completed_at": current_time,
-                "overall_grade": overall_grade,
-                "letter_grade": letter_grade,
-            })
-
-            logger.info(f"[{STAGE_NAME}] Video marked as completed in Firestore", extra={
-                "video_id": video_id_safe,
-                "timestamp": current_time,
-                "overall_grade": overall_grade,
-                "letter_grade": letter_grade,
-            })
-        
         except Exception as e:
             error_code = "FIRESTORE_ERROR"
             logger.error(f"[{STAGE_NAME}] Failed to update Firestore: {e}", extra={

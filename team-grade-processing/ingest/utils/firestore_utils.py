@@ -517,10 +517,22 @@ def mark_play_status(firestore_client, video_id: str, play_index: int, status: s
         return False
 
 
-def count_incomplete_plays(firestore_client, video_id: str, completed_status: str = "completed") -> int:
-    """Count how many `plays` rows for this video have NOT reached
-    `completed_status` yet - used by complete_stage.py's per-play completion
-    guard to decide whether the whole video is actually done.
+def count_incomplete_plays(
+    firestore_client, video_id: str,
+    completed_status: str = "completed", failed_status: str = "failed",
+) -> int:
+    """Count how many `plays` rows for this video are still genuinely in
+    progress - neither `completed_status` nor `failed_status` - used by
+    complete_stage.py's per-play completion guard to decide whether the
+    whole video is actually done.
+
+    A permanently-failed play (e.g. no pose data ever found - a kickoff or
+    replay-only play with nothing to analyze) is a RESOLVED terminal state,
+    same as completed - it must not block the rest of the video from ever
+    finishing. See queue_manager.mark_failed's play-permanent-failure path,
+    which marks the play "failed" and then re-checks this count itself
+    (nothing else would ever re-trigger complete_stage.py for a play that
+    never reaches its own biomechanics stage).
     """
     safe_id = settings.sanitize_id(video_id)
     with firestore_client.engine.connect() as conn:
@@ -528,7 +540,7 @@ def count_incomplete_plays(firestore_client, video_id: str, completed_status: st
             select(func.count())
             .select_from(plays_table)
             .where(plays_table.c.video_id == safe_id)
-            .where(plays_table.c.status != completed_status)
+            .where(plays_table.c.status.notin_([completed_status, failed_status]))
         ).scalar_one()
     return count
 

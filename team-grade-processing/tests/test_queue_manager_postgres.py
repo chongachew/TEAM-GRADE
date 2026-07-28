@@ -222,6 +222,94 @@ class TestSkipLockedDequeue:
         assert video_row["error"] == "DOWNLOAD_FAILED"
         assert stage_row["status"] == "failed"
 
+    def test_mark_failed_exhausted_for_one_play_does_not_fail_the_whole_video(self, pg_client):
+        """Real regression test (2026-07-28, found live in production on a
+        real 38-play video): a single play permanently failing (e.g. no
+        pose data - nothing to analyze in a kickoff/replay-only play) must
+        mark only THAT play failed, not cascade to videos.status - this
+        cascade predates play_index entirely and was never updated for the
+        per-play redesign. A second play is still genuinely pending here,
+        so the video must also not finalize early - see the sibling test
+        below for the "this WAS the last blocker" case."""
+        from ingest.db_schema import ingestion_queue, videos, plays
+        from ingest.queue_manager import QueueManager
+
+        video_id = "playfailtest01"
+        _insert_video(pg_client, video_id, status="processing")
+        with pg_client.engine.begin() as conn:
+            conn.execute(plays.insert().values(
+                video_id=video_id, play_index=0, start_frame=0, end_frame=99, status="pending",
+            ))
+            conn.execute(plays.insert().values(
+                video_id=video_id, play_index=1, start_frame=100, end_frame=199, status="pending",
+            ))
+        qm = QueueManager(pg_client)
+        qm.enqueue_video(video_id, stage="torso_crop", priority=5, play_index=0)
+
+        with pg_client.engine.begin() as conn:
+            conn.execute(
+                ingestion_queue.update()
+                .where(ingestion_queue.c.video_id == video_id)
+                .values(max_retries=1)
+            )
+
+        item = qm.dequeue_next_video()
+        assert qm.mark_failed(item["_doc_id"], "POSE_DATA_NOT_FOUND", retry=True) is True
+
+        with pg_client.engine.connect() as conn:
+            video_row = conn.execute(videos.select().where(videos.c.video_id == video_id)).mappings().first()
+            play_row = conn.execute(
+                plays.select().where(plays.c.video_id == video_id).where(plays.c.play_index == 0)
+            ).mappings().first()
+
+        # The video's own status is untouched - still "processing", not
+        # dragged down to "failed" by this one play.
+        assert video_row["status"] == "processing"
+        assert play_row["status"] == "failed"
+
+    def test_mark_failed_finalizes_video_when_failed_play_was_the_last_blocker(self, pg_client):
+        """The other side of the same fix: once a permanently-failed play
+        was the LAST pending play, the video must still reach
+        status="completed" with the real grade from the plays that DID
+        succeed - nothing else would ever re-check this, since a
+        permanently-failed play never reaches its own biomechanics stage to
+        self-enqueue "complete"."""
+        from ingest.db_schema import ingestion_queue, videos, plays, rep_analysis
+        from ingest.queue_manager import QueueManager
+
+        video_id = "playfailtest02"
+        _insert_video(pg_client, video_id, status="processing")
+        with pg_client.engine.begin() as conn:
+            # Play 0 already succeeded (real grade exists); play 1 is the
+            # one about to permanently fail - and is the LAST pending one.
+            conn.execute(plays.insert().values(
+                video_id=video_id, play_index=0, start_frame=0, end_frame=99, status="completed",
+            ))
+            conn.execute(plays.insert().values(
+                video_id=video_id, play_index=1, start_frame=100, end_frame=199, status="pending",
+            ))
+            conn.execute(rep_analysis.insert().values(
+                video_id=video_id, rep_index=0, track_id=None, play_index=0, overall_grade=88.0,
+            ))
+        qm = QueueManager(pg_client)
+        qm.enqueue_video(video_id, stage="torso_crop", priority=5, play_index=1)
+
+        with pg_client.engine.begin() as conn:
+            conn.execute(
+                ingestion_queue.update()
+                .where(ingestion_queue.c.video_id == video_id)
+                .values(max_retries=1)
+            )
+
+        item = qm.dequeue_next_video()
+        assert qm.mark_failed(item["_doc_id"], "POSE_DATA_NOT_FOUND", retry=True) is True
+
+        with pg_client.engine.connect() as conn:
+            video_row = conn.execute(videos.select().where(videos.c.video_id == video_id)).mappings().first()
+
+        assert video_row["status"] == "completed"
+        assert video_row["overall_grade"] == 88.0
+
     def test_cleanup_stalled_items_requeues_old_processing_rows(self, pg_client):
         from ingest.queue_manager import QueueManager
         from ingest.db_schema import ingestion_queue
