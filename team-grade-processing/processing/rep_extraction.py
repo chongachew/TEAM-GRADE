@@ -478,9 +478,22 @@ def segment_reps_from_pose_docs(
                 if rep_segments:
                     reps = []
                     for rep_idx, (start, end) in enumerate(rep_segments):
+                        # segment_into_reps_fast returns (start, end) as
+                        # positions in keypoints_sequence/frames - NOT real
+                        # frame_index values. frames_by_track only holds the
+                        # (temporally sparse) frames a track was actually
+                        # detected in, so list position and frame_id diverge
+                        # for any track missing frames. Mapping back through
+                        # frames[i].frame_id is what makes the resulting
+                        # start_frame/end_frame comparable to pose docs'
+                        # real frame_index - without it, every downstream
+                        # pose query in biomechanics_stage_vectorized.py
+                        # (frame_index BETWEEN start_frame AND end_frame)
+                        # silently matched zero rows, producing empty
+                        # features and an overall_grade of 0.0 for every rep.
                         rep = type('Rep', (), {
-                            'start_frame': start,
-                            'end_frame': end,
+                            'start_frame': frames[start].frame_id,
+                            'end_frame': frames[end].frame_id,
                             'duration_frames': end - start + 1
                         })()
                         reps.append(rep)
