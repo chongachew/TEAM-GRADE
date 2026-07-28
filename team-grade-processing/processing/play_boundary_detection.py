@@ -43,6 +43,17 @@ GAME_CLOCK_RE = re.compile(
 # Each worker loads its own full EasyOCR model - keep this low, not
 # cpu_count()-1, or concurrent model loads can OOM a modest worker instance.
 OCR_WORKERS = int(os.environ.get("OCR_WORKERS", "2"))
+# Phase A's own validation methodology (scripts/play_boundary_validation.py)
+# scored OCR at 1fps, never at the full FRAME_EXTRACTION_FPS (15fps in
+# production) - that distinction got lost when this was productionized, and
+# running OCR on every single frame instead of a 1fps sample was the real
+# bottleneck in play_detection_stage.py's runtime on a real video (down-
+# and-distance doesn't change frame-to-frame; the debounce logic below only
+# ever needed 2 consecutive SAMPLED reads to confirm a change, not frame-
+# adjacent ones). Real production evidence (2026-07-27): 4,681 frames at
+# 15fps meant 4,681 EasyOCR calls for a signal that only changes a few dozen
+# times per video.
+OCR_SAMPLE_FPS = float(os.environ.get("OCR_SAMPLE_FPS", "1"))
 
 # --- Camera-motion candidate tuning (calibrated 2026-07-25, see
 # scripts/camera_motion_candidates.py's session notes: translation=25px/
@@ -132,16 +143,21 @@ def _reject_replays(candidates: List[Tuple[int, str, Optional[Tuple[int, int]]]]
 
 
 def extract_ocr_candidates(frame_paths: List[Path], fps: float = FPS) -> List[Tuple[int, float]]:
-    """Runs OCR across frame_paths, debounces down-and-distance graphic
-    changes (only confirmed after 2 consecutive matching reads, tolerating
+    """Runs OCR across a fixed subsample of frame_paths (OCR_SAMPLE_FPS,
+    default 1fps - matching Phase A's own validated methodology, not the
+    full frame rate), debounces down-and-distance graphic changes (only
+    confirmed after 2 consecutive matching SAMPLED reads, tolerating
     EasyOCR's "1st" -> "Ist"/"lst" misread), rejects replay-cutaway false
     positives via game-clock backward movement. Returns sorted
     (frame_index, timestamp_seconds) candidates."""
     if not frame_paths:
         return []
 
+    step = max(1, round(fps / OCR_SAMPLE_FPS)) if OCR_SAMPLE_FPS > 0 else 1
+    sampled_paths = frame_paths[::step]
+
     with Pool(processes=OCR_WORKERS, initializer=_init_ocr_worker) as pool:
-        raw_results = list(pool.imap(_ocr_one_frame, [str(p) for p in frame_paths], chunksize=4))
+        raw_results = list(pool.imap(_ocr_one_frame, [str(p) for p in sampled_paths], chunksize=4))
     raw_results.sort(key=lambda r: r[0])
 
     prev_confirmed = None
