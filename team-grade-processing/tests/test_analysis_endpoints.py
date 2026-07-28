@@ -18,11 +18,13 @@ def _make_doc(data):
     return doc
 
 
-def _wire_subcollections(mock_fs, analysis_docs, reps_docs=None, pose_docs=None):
+def _wire_subcollections(mock_fs, analysis_docs, reps_docs=None, pose_docs=None, tracks_meta_docs=None):
     """Wire firestore_client.db.collection("videos").document(id).collection(name)
-    .stream() to return analysis_docs for "analysis", reps_docs for "reps", and
-    pose_docs for "pose" (the provisional-analysis preview path's source data -
-    defaults to [] so tests that don't care about it don't need to know it exists)."""
+    .stream() to return analysis_docs for "analysis", reps_docs for "reps",
+    pose_docs for "pose" (the provisional-analysis preview path's source data),
+    and tracks_meta_docs for "tracks_meta" (the player_id-grouping join) -
+    each defaults to [] so tests that don't care about it don't need to know
+    it exists."""
 
     def collection_side_effect(name):
         col_mock = MagicMock()
@@ -32,6 +34,8 @@ def _wire_subcollections(mock_fs, analysis_docs, reps_docs=None, pose_docs=None)
             col_mock.stream.return_value = [_make_doc(d) for d in (reps_docs or [])]
         elif name == "pose":
             col_mock.stream.return_value = [_make_doc(d) for d in (pose_docs or [])]
+        elif name == "tracks_meta":
+            col_mock.stream.return_value = [_make_doc(d) for d in (tracks_meta_docs or [])]
         return col_mock
 
     doc_mock = MagicMock()
@@ -85,6 +89,71 @@ class TestAnalysisEndpoint:
             data = response.json()
             assert data["authenticity_signals"] == {}
             assert data["authenticity_flagged"] is False
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_get_analysis_does_not_collide_across_plays_sharing_rep_index(self, client, mock_video_document):
+        """Regression test for a real production bug: rep_index resets to 0
+        on every play (Phase C), so joining reps<->analysis on bare
+        rep_index collapsed distinct plays' reps onto whichever reps doc
+        happened to be last in stream() order - three different tracks in
+        the same play all showed the identical start_frame live in
+        production before this fix. Two DIFFERENT plays here share
+        rep_index=0 and track_id=0 - each must keep its own real timing."""
+        with patch("api.server.firestore_client") as mock_fs:
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_subcollections(
+                mock_fs,
+                analysis_docs=[
+                    {"rep_index": 0, "track_id": 0, "play_index": 2, "traits": {}, "buckets": {}, "overall_grade": 70.0},
+                    {"rep_index": 0, "track_id": 0, "play_index": 6, "traits": {}, "buckets": {}, "overall_grade": 85.0},
+                ],
+                reps_docs=[
+                    {"rep_index": 0, "track_id": 0, "play_index": 2, "start_frame": 100, "end_frame": 120},
+                    {"rep_index": 0, "track_id": 0, "play_index": 6, "start_frame": 4660, "end_frame": 4680},
+                ],
+            )
+
+            response = client.get("/api/analysis/dQw4w9WgXcQ")
+
+            assert response.status_code == 200
+            reps_by_play = {r["play_index"]: r for r in response.json()["reps"]}
+            assert reps_by_play[2]["start_frame"] == 100
+            assert reps_by_play[2]["end_frame"] == 120
+            assert reps_by_play[6]["start_frame"] == 4660
+            assert reps_by_play[6]["end_frame"] == 4680
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_get_analysis_attaches_cross_play_player_id(self, client, mock_video_document):
+        """Reps whose tracks share a confident jersey number across two
+        different plays must carry the same player_id, so the frontend can
+        show a claimed player's reel spanning every play they appear in."""
+        with patch("api.server.firestore_client") as mock_fs:
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_subcollections(
+                mock_fs,
+                analysis_docs=[
+                    {"rep_index": 0, "track_id": 0, "play_index": 2, "traits": {}, "buckets": {}, "overall_grade": 70.0},
+                    {"rep_index": 0, "track_id": 3, "play_index": 6, "traits": {}, "buckets": {}, "overall_grade": 85.0},
+                ],
+                reps_docs=[
+                    {"rep_index": 0, "track_id": 0, "play_index": 2, "start_frame": 100, "end_frame": 120},
+                    {"rep_index": 0, "track_id": 3, "play_index": 6, "start_frame": 4660, "end_frame": 4680},
+                ],
+                tracks_meta_docs=[
+                    {"track_id": 0, "play_index": 2, "jersey_number": "23", "jersey_confidence": 0.9},
+                    {"track_id": 3, "play_index": 6, "jersey_number": "23", "jersey_confidence": 0.85},
+                ],
+            )
+
+            response = client.get("/api/analysis/dQw4w9WgXcQ")
+
+            assert response.status_code == 200
+            reps = response.json()["reps"]
+            player_ids = {r["player_id"] for r in reps}
+            assert len(player_ids) == 1
+            assert next(iter(player_ids)) == "jersey_23"
 
     @pytest.mark.endpoints
     @pytest.mark.integration

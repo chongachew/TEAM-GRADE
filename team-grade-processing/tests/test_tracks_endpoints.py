@@ -52,10 +52,10 @@ class TestTracksEndpoint:
             mock_fs.get_video_status.return_value = mock_video_document
             _wire_collection(mock_fs, {
                 "tracks_meta": [
-                    {"_id": "007", "jersey_number": "7", "jersey_confidence": 0.9,
+                    {"track_id": 7, "play_index": 0, "jersey_number": "7", "jersey_confidence": 0.9,
                      "first_frame": 10, "last_frame": 400, "total_frames_tracked": 390,
                      "status": "active"},
-                    {"_id": "014", "jersey_number": "14", "jersey_confidence": 0.8,
+                    {"track_id": 14, "play_index": 0, "jersey_number": "14", "jersey_confidence": 0.8,
                      "first_frame": 20, "last_frame": 380, "total_frames_tracked": 360,
                      "status": "active"},
                 ],
@@ -65,8 +65,59 @@ class TestTracksEndpoint:
 
             assert response.status_code == 200
             tracks = response.json()["tracks"]
-            assert {t["track_id"] for t in tracks} == {7, 14}
-            assert all(t["jersey_number"] for t in tracks)
+            assert {t["jersey_number"] for t in tracks} == {"7", "14"}
+            assert all(t["instances"] for t in tracks)
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_get_tracks_groups_same_jersey_across_plays(self, client, mock_video_document):
+        """The whole point of grouping: the same real player, tracked as
+        track_id=0 in one play and track_id=3 in another (track_id resets
+        per play - Phase C), reads the same confident jersey number in both
+        and must collapse to one card with both instances, not two cards."""
+        with patch("api.server.firestore_client") as mock_fs:
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_collection(mock_fs, {
+                "tracks_meta": [
+                    {"track_id": 0, "play_index": 2, "jersey_number": "23", "jersey_confidence": 0.9,
+                     "total_frames_tracked": 100},
+                    {"track_id": 3, "play_index": 6, "jersey_number": "23", "jersey_confidence": 0.85,
+                     "total_frames_tracked": 50},
+                ],
+            })
+
+            response = client.get("/api/tracks/dQw4w9WgXcQ")
+
+            assert response.status_code == 200
+            tracks = response.json()["tracks"]
+            assert len(tracks) == 1
+            assert tracks[0]["jersey_number"] == "23"
+            assert tracks[0]["total_frames_tracked"] == 150
+            instances = {(i["track_id"], i["play_index"]) for i in tracks[0]["instances"]}
+            assert instances == {(0, 2), (3, 6)}
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_get_tracks_low_confidence_jersey_stays_separate(self, client, mock_video_document):
+        """A weak/unreliable jersey OCR read must never guess-merge two
+        different real players into one claimable identity."""
+        with patch("api.server.firestore_client") as mock_fs:
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_collection(mock_fs, {
+                "tracks_meta": [
+                    {"track_id": 0, "play_index": 2, "jersey_number": "23", "jersey_confidence": 0.3,
+                     "total_frames_tracked": 100},
+                    {"track_id": 3, "play_index": 6, "jersey_number": "23", "jersey_confidence": 0.3,
+                     "total_frames_tracked": 50},
+                ],
+            })
+
+            response = client.get("/api/tracks/dQw4w9WgXcQ")
+
+            assert response.status_code == 200
+            tracks = response.json()["tracks"]
+            assert len(tracks) == 2
+            assert all(t["jersey_number"] is None for t in tracks)
 
     @pytest.mark.endpoints
     @pytest.mark.integration
@@ -82,7 +133,7 @@ class TestTracksEndpoint:
             assert response.status_code == 200
             tracks = response.json()["tracks"]
             assert len(tracks) == 1
-            assert tracks[0]["track_id"] == 0
+            assert tracks[0]["instances"] == [{"track_id": 0, "play_index": None}]
             assert tracks[0]["jersey_number"] == mock_video_document["jersey_number"]
 
     @pytest.mark.endpoints

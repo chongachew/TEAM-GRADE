@@ -163,6 +163,37 @@ class TestRepCorrectionEndpoint:
 
     @pytest.mark.endpoints
     @pytest.mark.integration
+    def test_correct_rep_boundary_disambiguates_by_play_index(self, client, mock_video_document):
+        """Regression test: rep_index and track_id both reset to 0 on every
+        play (Phase C), so two different plays can share the exact same
+        (rep_index, track_id) pair. Without play_index in the match, a
+        correction request for one play's rep could silently update a
+        DIFFERENT play's rep instead. Also confirms the recomputed analysis
+        doc gets play_index written onto it - omitting it meant the write
+        targeted the play_index IS NULL slot instead of the real row."""
+        mock_video_document["frame_count"] = 5000
+        other_play_rep = _make_doc({"rep_index": 0, "track_id": 7, "play_index": 2, "start_frame": 10, "end_frame": 40})
+        target_rep = _make_doc({"rep_index": 0, "track_id": 7, "play_index": 6, "start_frame": 4660, "end_frame": 4680})
+
+        with patch("api.server.firestore_client") as mock_fs:
+            mock_fs.get_video_status.return_value = mock_video_document
+            analysis_doc_mock = _wire_firestore(mock_fs, [other_play_rep, target_rep], SAMPLE_POSE_DOCS)
+
+            response = client.patch(
+                "/api/reps/dQw4w9WgXcQ",
+                json={"track_id": 7, "rep_index": 0, "play_index": 6, "start_frame": 20, "end_frame": 60},
+            )
+
+            assert response.status_code == 200, response.text
+            # The right rep (play_index=6) got updated, not play_index=2's.
+            other_play_rep.reference.update.assert_not_called()
+            target_rep.reference.update.assert_called_once()
+
+            written = analysis_doc_mock.set.call_args[0][0]
+            assert written["play_index"] == 6
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
     def test_correct_rep_boundary_rep_not_found(self, client, mock_video_document):
         mock_video_document["frame_count"] = 200
         other_rep = _make_doc({"rep_index": 1, "track_id": 7, "start_frame": 10, "end_frame": 40})

@@ -107,6 +107,33 @@ class TestGetRepClip:
 
     @pytest.mark.endpoints
     @pytest.mark.integration
+    def test_get_clip_disambiguates_by_play_index(self, client, mock_video_document, tmp_path):
+        """Regression test: rep_index and track_id both reset to 0 on every
+        play (Phase C), so two different plays can share the same
+        (rep_index, track_id) pair. Without play_index in the lookup, this
+        endpoint could silently cut a DIFFERENT player's/play's footage into
+        a user's highlight reel."""
+        video_path = tmp_path / "dQw4w9WgXcQ.mp4"
+        video_path.write_bytes(b"fake source video")
+        other_play_rep = _make_doc({"rep_index": 0, "track_id": 7, "play_index": 2, "start_frame": 10, "end_frame": 25})
+        # start_frame=30, end_frame=90, FPS=15 -> start=2.0s, duration=4.0s
+        target_rep = _make_doc({"rep_index": 0, "track_id": 7, "play_index": 6, "start_frame": 30, "end_frame": 90})
+
+        with patch("api.server.firestore_client") as mock_fs, \
+             patch("config.settings.get_video_path", return_value=video_path), \
+             patch("api.server.subprocess.run", side_effect=_fake_ffmpeg_success) as mock_run:
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_reps(mock_fs, [other_play_rep, target_rep])
+
+            response = client.get("/api/reps/dQw4w9WgXcQ/clip?track_id=7&rep_index=0&play_index=6")
+
+            assert response.status_code == 200, response.text
+            cmd = mock_run.call_args[0][0]
+            assert cmd[cmd.index("-ss") + 1] == "2.0"
+            assert cmd[cmd.index("-t") + 1] == "4.0"
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
     def test_get_clip_rep_not_found(self, client, mock_video_document):
         with patch("api.server.firestore_client") as mock_fs:
             mock_fs.get_video_status.return_value = mock_video_document

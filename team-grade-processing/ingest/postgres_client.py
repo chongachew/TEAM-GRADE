@@ -568,9 +568,24 @@ def _load_stages(conn, video_id: str) -> Dict[str, Any]:
 # this): document get/set/update/delete, subcollection stream/where/order_by,
 # and simple batched writes.
 
+def _play_suffix(row: Dict[str, Any]) -> str:
+    """Doc-id suffix disambiguating rows across plays. track_id and
+    rep_index both reset to 0 on every play (Phase C), so tracks_meta/
+    analysis/reps doc IDs built from those alone collide across plays -
+    e.g. two different plays' track_id=0 rows produced the identical doc.id
+    "000", which meant GET /api/tracks's int(doc.id) parsing (before it was
+    rewritten to read track_id from the row data directly) silently merged
+    or dropped distinct players. Omitted entirely for play_index=None
+    (whole-video-mode / pre-per-play-redesign videos) to keep those doc IDs
+    unchanged.
+    """
+    play_index = row.get("play_index")
+    return f"_p{play_index:04d}" if play_index is not None else ""
+
+
 _DOC_ID_BUILDERS = {
-    "tracks_meta": lambda row: f"{row['track_id']:03d}",
-    "analysis": lambda row: f"rep_{row['rep_index']}",
+    "tracks_meta": lambda row: f"{row['track_id']:03d}{_play_suffix(row)}",
+    "analysis": lambda row: f"rep_{row['rep_index']}{_play_suffix(row)}",
     "pose": lambda row: (
         f"{row['frame_index']:06d}_{row['track_id']:03d}" if row.get("track_id") is not None
         else f"{row['frame_index']:06d}"
@@ -582,7 +597,7 @@ _DOC_ID_BUILDERS = {
     "reps": lambda row: (
         f"{row['track_id']:03d}_{row['rep_index']:04d}" if row.get("track_id") is not None
         else f"{row['rep_index']:06d}"
-    ),
+    ) + _play_suffix(row),
     "detections": lambda row: f"{row['frame_index']:06d}_{row['detection_index']:02d}",
     "tracks": lambda row: f"{row['frame_index']:06d}_{row['track_id']:03d}",
     "frames": lambda row: f"{row['frame_index']:06d}",

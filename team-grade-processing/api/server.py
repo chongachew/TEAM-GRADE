@@ -10,7 +10,7 @@ import secrets
 import sys
 import subprocess
 import tempfile
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, Request
@@ -307,6 +307,9 @@ class RepCorrectionRequest(BaseModel):
     rep_index: int
     start_frame: int
     end_frame: int
+    # None for videos processed before the per-play redesign / single-
+    # athlete-mode videos, where play_detection never runs.
+    play_index: Optional[int] = None
 
 
 class NotifyEmailRequest(BaseModel):
@@ -921,11 +924,31 @@ async def get_analysis(
             .document(safe_video_id)
             .collection(settings.COLLECTION_REPS)
         )
-        rep_docs_by_index = {
-            d.to_dict().get("rep_index"): d.to_dict() for d in reps_ref.stream()
+        # Keyed on the full (rep_index, track_id, play_index) identity tuple,
+        # not bare rep_index - rep_index resets to 0 on every play (Phase C),
+        # so a bare-rep_index key collapsed onto whichever rep happened to be
+        # last in stream() order, stamping its start_frame/end_frame onto
+        # every other rep sharing that rep_index regardless of play or
+        # player. Confirmed live: three different tracks in the same play
+        # all showed the same start_frame before this fix.
+        reps_docs_data = [d.to_dict() for d in reps_ref.stream()]
+        rep_docs_by_key = {
+            (d.get("rep_index"), d.get("track_id"), d.get("play_index")): d
+            for d in reps_docs_data
         }
+        # Legacy fallback, bare rep_index only: analysis docs written before
+        # track_id was denormalized into them directly have no track_id of
+        # their own to build the precise key with. Only pre-per-play-redesign
+        # docs ever hit this - every current analysis doc always carries its
+        # own real track_id and play_index, so the precise key above matches.
+        rep_docs_by_rep_index = {d.get("rep_index"): d for d in reps_docs_data}
         for rep in reps:
-            rep_doc = rep_docs_by_index.get(rep.get("rep_index"), {})
+            rep_doc = rep_docs_by_key.get(
+                (rep.get("rep_index"), rep.get("track_id"), rep.get("play_index"))
+            )
+            if rep_doc is None and rep.get("track_id") is None:
+                rep_doc = rep_docs_by_rep_index.get(rep.get("rep_index"), {})
+            rep_doc = rep_doc or {}
             if rep.get("track_id") is None:
                 rep["track_id"] = rep_doc.get("track_id")
             # Single-athlete-mode videos (MULTI_PLAYER_TRACKING_ENABLED off, the
@@ -987,6 +1010,28 @@ async def get_analysis(
                 # Soft-flag: a broken preview must never break the endpoint -
                 # worst case it falls back to today's "no plays yet".
                 logger.warning(f"[get_analysis] Provisional analysis failed for {safe_video_id} (non-fatal): {e}")
+
+        # Attach each rep's cross-play player_id (see _group_tracks_by_player
+        # and GET /api/tracks) so the frontend can tell which reps belong to
+        # the same real player across different plays, instead of comparing
+        # raw track_id - which resets to 0 on every play and collides
+        # between unrelated players (Phase C). Covers both final-pass and
+        # provisional-preview reps, since this runs after both are collected.
+        tracks_meta_ref = (
+            firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+            .document(safe_video_id)
+            .collection(COLLECTION_TRACKS_META)
+        )
+        player_groups = _group_tracks_by_player([doc.to_dict() for doc in tracks_meta_ref.stream()])
+        instance_to_player = {
+            (instance["track_id"], instance["play_index"]): group["player_id"]
+            for group in player_groups
+            for instance in group["instances"]
+        }
+        for rep in reps:
+            rep["player_id"] = instance_to_player.get(
+                (rep.get("track_id"), rep.get("play_index")), "track_0_x"
+            )
 
         if track_id is not None:
             reps = [r for r in reps if r.get("track_id") == track_id]
@@ -1102,17 +1147,77 @@ async def get_plays(video_id: str) -> Dict[str, Any]:
         )
 
 
+def _group_tracks_by_player(tracks_meta_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Group per-play tracked-player rows into stable cross-play "player"
+    identities, so a claimed player's cards/plays/reps aren't scattered
+    across one entry per (track_id, play_index) just because tracking
+    resets track_id to 0 on every play (Phase C's per-play redesign) -
+    confirmed live: a real 38-play video had 1081 raw tracks_meta rows.
+
+    Rows sharing a jersey_number with jersey_confidence >=
+    settings.OCR_CONFIDENCE_THRESHOLD merge into one player_id
+    ("jersey_<number>"). Everything else - no jersey read, or one too
+    unreliable to trust - stays its own singleton
+    ("track_<track_id>_<play_index>") rather than guess-merging on weak
+    OCR, which could silently combine two different real players.
+
+    Computed fresh on every call, never persisted - mirrors get_analysis's
+    existing "provisional" preview pattern, so this stays correct as
+    jersey OCR data streams in during processing with no migration needed.
+
+    Returns:
+        List of {"player_id", "jersey_number", "total_frames_tracked",
+        "instances": [{"track_id", "play_index"}, ...]}, one per group, in
+        first-seen order.
+    """
+    groups: Dict[str, Dict[str, Any]] = {}
+    order: List[str] = []
+
+    for row in tracks_meta_rows:
+        track_id = row.get("track_id")
+        play_index = row.get("play_index")
+        jersey_number = row.get("jersey_number")
+        jersey_confidence = row.get("jersey_confidence") or 0.0
+        confident_jersey = bool(jersey_number) and jersey_confidence >= settings.OCR_CONFIDENCE_THRESHOLD
+
+        player_id = (
+            f"jersey_{jersey_number}" if confident_jersey
+            else f"track_{track_id}_{play_index if play_index is not None else 'x'}"
+        )
+
+        if player_id not in groups:
+            groups[player_id] = {
+                "player_id": player_id,
+                "jersey_number": jersey_number if confident_jersey else None,
+                "total_frames_tracked": 0,
+                "instances": [],
+            }
+            order.append(player_id)
+
+        group = groups[player_id]
+        group["total_frames_tracked"] += row.get("total_frames_tracked") or 0
+        group["instances"].append({"track_id": track_id, "play_index": play_index})
+
+    return [groups[player_id] for player_id in order]
+
+
 @app.get("/api/tracks/{video_id}")
 async def get_tracks(video_id: str) -> Dict[str, Any]:
     """
-    Get the player library for a video: one entry per tracked player.
+    Get the player library for a video: one entry per cross-play player
+    identity (see _group_tracks_by_player) - not one per raw tracks_meta
+    row, which would be one per (track_id, play_index) instead. track_id
+    resets to 0 on every play (Phase C), so a real multi-play video could
+    have 1000+ tracks_meta rows for a couple dozen real players; this
+    endpoint groups those rows by jersey number so a player claimed once
+    shows up as one card whose "instances" span every play they appear in.
 
-    Multi-player-mode videos (MULTI_PLAYER_TRACKING_ENABLED) return one entry
-    per tracks_meta doc. Single-athlete-mode videos (the default) have no
-    tracks_meta subcollection at all - in that case, return a single synthetic
-    entry built from the root video doc's own jersey fields, with track_id=0
-    (the same sentinel /api/analysis uses), so the player library and claim
-    flow always have exactly one correct card instead of rendering empty.
+    Single-athlete-mode videos (the default) have no tracks_meta
+    subcollection at all - in that case, return a single synthetic entry
+    built from the root video doc's own jersey fields, with track_id=0 (the
+    same sentinel /api/analysis uses), so the player library and claim flow
+    always have exactly one correct card instead of rendering empty.
 
     Raises:
         HTTPException: If the video itself doesn't exist
@@ -1139,32 +1244,19 @@ async def get_tracks(video_id: str) -> Dict[str, Any]:
             .document(safe_video_id)
             .collection(COLLECTION_TRACKS_META)
         )
-        tracks = []
-        for doc in tracks_meta_ref.stream():
-            data = doc.to_dict()
-            tracks.append({
-                "track_id": int(doc.id),
-                "jersey_number": data.get("jersey_number"),
-                "jersey_confidence": data.get("jersey_confidence"),
-                "first_frame": data.get("first_frame"),
-                "last_frame": data.get("last_frame"),
-                "total_frames_tracked": data.get("total_frames_tracked"),
-                "status": data.get("status"),
-            })
+        raw_rows = [doc.to_dict() for doc in tracks_meta_ref.stream()]
+        players = _group_tracks_by_player(raw_rows)
 
-        if not tracks:
-            tracks.append({
-                "track_id": 0,
+        if not players:
+            players.append({
+                "player_id": "track_0_x",
                 "jersey_number": video_data.get("jersey_number"),
-                "jersey_confidence": video_data.get("jersey_confidence"),
-                "first_frame": None,
-                "last_frame": None,
-                "total_frames_tracked": None,
-                "status": None,
+                "total_frames_tracked": 0,
+                "instances": [{"track_id": 0, "play_index": None}],
             })
 
-        logger.info(f"Retrieved {len(tracks)} track(s) for {safe_video_id}")
-        return {"tracks": tracks}
+        logger.info(f"Retrieved {len(players)} player(s) from {len(raw_rows)} track row(s) for {safe_video_id}")
+        return {"tracks": players}
 
     except HTTPException:
         raise
@@ -1312,10 +1404,19 @@ def _find_rep_doc(
     safe_video_id: str,
     rep_index: int,
     lookup_track_id: Optional[int],
+    play_index: Optional[int] = None,
 ):
     """
     Find a rep doc by rep_index + track_id (None for the single-athlete-mode
-    sentinel) - shared by the boundary-correction and clip-cut endpoints.
+    sentinel) + play_index - shared by the boundary-correction and clip-cut
+    endpoints.
+
+    play_index must be included: rep_index and track_id both reset to 0 on
+    every play (Phase C's per-play redesign), so matching on just the first
+    two returned whichever play happened to be first in stream() order -
+    the boundary-correction endpoint could silently update a DIFFERENT
+    play's rep, and the clip-cut endpoint could cut a different player's
+    footage into a highlight reel.
 
     Returns:
         The matching Firestore doc snapshot, or None if not found.
@@ -1331,6 +1432,8 @@ def _find_rep_doc(
             continue
         if data.get("track_id") != lookup_track_id:
             continue
+        if data.get("play_index") != play_index:
+            continue
         return doc
     return None
 
@@ -1342,6 +1445,7 @@ def _recompute_rep_analysis(
     track_id: Optional[int],
     start_frame: int,
     end_frame: int,
+    play_index: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Recompute a single rep's biomechanics score over a corrected frame range.
@@ -1363,6 +1467,8 @@ def _recompute_rep_analysis(
         .collection(settings.COLLECTION_POSE)
     )
     query = pose_ref.where("frame_index", ">=", start_frame).where("frame_index", "<=", end_frame)
+    if play_index is not None:
+        query = query.where("play_index", "==", play_index)
     if track_id is not None:
         query = query.where("track_id", "==", track_id)
     pose_docs = list(query.order_by("frame_index").stream())
@@ -1383,6 +1489,14 @@ def _recompute_rep_analysis(
     return {
         "rep_index": rep_index,
         "track_id": track_id,
+        # Must be included: _SubDocRef.set()'s "analysis" branch
+        # (ingest/postgres_client.py) reads play_index straight out of this
+        # dict to target rep_analysis's real (video_id, rep_index, track_id,
+        # play_index) row via upsert_row_coalesce_keys. Omitting it meant
+        # every boundary correction silently wrote to the play_index IS NULL
+        # slot instead of the rep's real play, leaving the actual row
+        # uncorrected.
+        "play_index": play_index,
         "traits": {trait_names[j]: float(trait_scores[0, j]) for j in range(len(trait_names))},
         "buckets": {trait_names[j]: str(buckets[0, j]) for j in range(len(trait_names))},
         "overall_grade": float(np.mean(trait_scores[0, :])),
@@ -1442,11 +1556,13 @@ async def correct_rep_boundary(video_id: str, request: RepCorrectionRequest) -> 
         # analysis endpoints.
         lookup_track_id = request.track_id if request.track_id else None
 
-        rep_doc = _find_rep_doc(firestore_client, safe_video_id, request.rep_index, lookup_track_id)
+        rep_doc = _find_rep_doc(
+            firestore_client, safe_video_id, request.rep_index, lookup_track_id, request.play_index
+        )
         if rep_doc is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"Rep {request.rep_index} (track_id={request.track_id}) not found",
+                detail=f"Rep {request.rep_index} (track_id={request.track_id}, play_index={request.play_index}) not found",
             )
         rep_doc_ref = rep_doc.reference
 
@@ -1458,6 +1574,7 @@ async def correct_rep_boundary(video_id: str, request: RepCorrectionRequest) -> 
                 lookup_track_id,
                 request.start_frame,
                 request.end_frame,
+                request.play_index,
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -1575,6 +1692,7 @@ async def get_rep_clip(
     track_id: int = Query(...),
     rep_index: int = Query(...),
     with_overlay: bool = Query(False),
+    play_index: Optional[int] = Query(None),
 ) -> FileResponse:
     """
     Cut and return a short clip of one rep's frame range, for the highlight-
@@ -1626,10 +1744,10 @@ async def get_rep_clip(
         # the rep doc at all) - same idiom used by /api/analysis, /api/tracks,
         # and PATCH /api/reps/{video_id}.
         lookup_track_id = track_id if track_id else None
-        rep_doc = _find_rep_doc(firestore_client, safe_video_id, rep_index, lookup_track_id)
+        rep_doc = _find_rep_doc(firestore_client, safe_video_id, rep_index, lookup_track_id, play_index)
         if rep_doc is None:
             raise HTTPException(
-                status_code=404, detail=f"Rep {rep_index} (track_id={track_id}) not found"
+                status_code=404, detail=f"Rep {rep_index} (track_id={track_id}, play_index={play_index}) not found"
             )
 
         rep_data = rep_doc.to_dict()
