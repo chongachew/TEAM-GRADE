@@ -269,6 +269,34 @@ class TestTrackThumbnailEndpoint:
 
     @pytest.mark.endpoints
     @pytest.mark.integration
+    def test_get_thumbnail_disambiguates_by_play_index(self, client, mock_video_document, tmp_path):
+        """Same track_id number recurring across two different plays (track_id
+        resets per play - Phase C) must not mix their crops when play_index
+        is provided to disambiguate."""
+        wrong_play_crop = tmp_path / "wrong.jpg"
+        wrong_play_crop.write_bytes(b"wrong play crop")
+        right_play_crop = tmp_path / "right.jpg"
+        right_play_crop.write_bytes(b"right play crop")
+
+        with patch("api.server.firestore_client") as mock_fs, \
+             patch("config.settings.PROJECT_ROOT", tmp_path):
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_collection(mock_fs, {
+                "torso": [
+                    {"frame_index": 5, "track_id": 7, "play_index": 2, "crop_path": "wrong.jpg",
+                     "crop_box": [0, 0, 100, 100]},
+                    {"frame_index": 40, "track_id": 7, "play_index": 6, "crop_path": "right.jpg",
+                     "crop_box": [0, 0, 10, 10]},
+                ],
+            })
+
+            response = client.get("/api/tracks/dQw4w9WgXcQ/thumbnail/7?play_index=6")
+
+            assert response.status_code == 200
+            assert response.content == b"right play crop"
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
     def test_get_thumbnail_no_crops_for_track_returns_404(self, client, mock_video_document):
         with patch("api.server.firestore_client") as mock_fs:
             mock_fs.get_video_status.return_value = mock_video_document

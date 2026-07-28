@@ -1266,7 +1266,9 @@ async def get_tracks(video_id: str) -> Dict[str, Any]:
 
 
 @app.get("/api/tracks/{video_id}/thumbnail/{track_id}")
-async def get_track_thumbnail(video_id: str, track_id: int) -> FileResponse:
+async def get_track_thumbnail(
+    video_id: str, track_id: int, play_index: Optional[int] = Query(None)
+) -> FileResponse:
     """
     Serve one representative torso-crop image for a tracked player.
 
@@ -1275,6 +1277,14 @@ async def get_track_thumbnail(video_id: str, track_id: int) -> FileResponse:
     score) and its file path is resolved from Firestore, never accepted
     directly from the client - crop_path is stored relative to PROJECT_ROOT
     with no path-traversal guarantee of its own.
+
+    play_index is optional: a grouped player identity (see
+    _group_tracks_by_player) can span several (track_id, play_index)
+    instances, and the frontend picks one representative instance to fetch
+    a thumbnail for. Omitted, this falls back to matching track_id alone
+    across every play - fine for the common single-instance case, but could
+    pick a crop from the wrong play if the same track_id number happens to
+    recur across plays with no confident jersey to disambiguate.
 
     Raises:
         HTTPException: If the video or a thumbnail for that track doesn't exist
@@ -1308,6 +1318,9 @@ async def get_track_thumbnail(video_id: str, track_id: int) -> FileResponse:
         else:
             # Sentinel track_id=0: single-athlete-mode crops carry no track_id field at all.
             crops = [c for c in crops if c.get("track_id") is None]
+
+        if play_index is not None:
+            crops = [c for c in crops if c.get("play_index") == play_index]
 
         if not crops:
             raise HTTPException(
