@@ -6,8 +6,9 @@ run_batch_job.py for the job's own entrypoint, which finalizes the queue
 item's status the same way ingest_pipeline_worker.py's poll loop does.
 """
 
+import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List
 
 import boto3
 
@@ -28,28 +29,27 @@ def _get_batch_client():
 def submit_gpu_stage_job(
     video_id: str,
     stage: str,
-    queue_doc_id: str,
-    play_index: Optional[int] = None,
+    items: List[Dict[str, Any]],
 ) -> str:
-    """Submit one pipeline stage as an AWS Batch job.
+    """Submit one pipeline stage as an AWS Batch job, covering one or more
+    plays' worth of work in a single job invocation (per-play redesign -
+    one model load, iterate plays, instead of one job per play).
 
     Args:
         video_id: Video to process.
         stage: Stage name (expected: "detection" or "tracking").
-        queue_doc_id: The dequeued item's queue row ID - the Batch job's own
-            entrypoint (run_batch_job.py) uses this to mark the item
-            completed/failed once it finishes.
-        play_index: Which play this job is scoped to, or None for
-            whole-video-mode - threaded through to run_batch_job.py via
-            --play-index so the stage handler it runs receives it.
+        items: One or more {"queue_doc_id": str, "play_index":
+            Optional[int]} dicts - the Batch job's own entrypoint
+            (run_batch_job.py) loops over these, marking each one
+            completed/failed independently once it finishes. A
+            whole-video-mode job (no plays) is just a single-item list
+            with play_index=None.
 
     Returns:
         The submitted Batch job ID.
     """
     command = ["python", "run_batch_job.py", "--video-id", video_id, "--stage", stage,
-               "--queue-doc-id", queue_doc_id]
-    if play_index is not None:
-        command += ["--play-index", str(play_index)]
+               "--items", json.dumps(items)]
 
     response = _get_batch_client().submit_job(
         jobName=f"team-grade-{stage}-{video_id}"[:128],

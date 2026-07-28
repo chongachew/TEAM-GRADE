@@ -302,14 +302,44 @@ class PipelineWorker:
         # the item stays "processing" (already set by dequeue_next_video's
         # SKIP LOCKED transaction) until the Batch job finishes.
         if not force_inline and stage in (STAGE_DETECTION, STAGE_TRACKING) and settings.GPU_BATCH_ENABLED:
+            play_index = queue_item.get("play_index")
+            items = [{"queue_doc_id": queue_doc_id, "play_index": play_index}]
+
+            # Per-play redesign: batch sibling plays' already-ready work for
+            # the same video+stage into this same Batch job (one model
+            # load, not one job per play) - see queue_manager.claim_sibling_plays.
+            # Only applies once this video actually has plays (play_index
+            # is not None) - whole-video-mode jobs stay a batch-of-1.
+            if play_index is not None:
+                try:
+                    siblings = self.queue_manager.claim_sibling_plays(
+                        video_id, stage,
+                        exclude_id=int(queue_doc_id),
+                        max_extra=settings.GPU_BATCH_MAX_PLAYS_PER_JOB - 1,
+                    )
+                    items.extend(
+                        {"queue_doc_id": s["_doc_id"], "play_index": s["play_index"]}
+                        for s in siblings
+                    )
+                except Exception as e:
+                    # Non-fatal: worst case this job only covers the one
+                    # already-claimed item, same as before batching existed.
+                    logger.warning(f"{log_prefix}[{video_id}] Failed to claim sibling plays for {stage}: {e}")
+
             try:
-                job_id = submit_gpu_stage_job(
-                    video_id, stage, queue_doc_id, play_index=queue_item.get("play_index")
+                job_id = submit_gpu_stage_job(video_id, stage, items)
+                logger.info(
+                    f"{log_prefix}[{video_id}] Submitted {stage} to AWS Batch: job {job_id} "
+                    f"({len(items)} play(s))"
                 )
-                logger.info(f"{log_prefix}[{video_id}] Submitted {stage} to AWS Batch: job {job_id}")
             except Exception as e:
                 logger.error(f"{log_prefix}[{video_id}] Failed to submit {stage} to AWS Batch: {e}")
-                self.queue_manager.mark_failed(queue_doc_id, f"Batch submit failed: {e}", retry=True)
+                # The whole batch never got submitted - every claimed item
+                # (not just the original one) needs to go back to the
+                # queue, or the sibling rows would sit "processing" forever
+                # with no job left to finalize them.
+                for it in items:
+                    self.queue_manager.mark_failed(it["queue_doc_id"], f"Batch submit failed: {e}", retry=True)
             return
 
         logger.info(f"{log_prefix}Processing: {video_id}/{stage}")

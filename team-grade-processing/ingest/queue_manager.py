@@ -218,6 +218,79 @@ class QueueManager:
             logger.error(f"Failed to dequeue video: {e}")
             return None
 
+    def claim_sibling_plays(
+        self, video_id: str, stage: str, exclude_id: int, max_extra: int
+    ) -> List[Dict[str, Any]]:
+        """After dequeue_next_video() has already claimed one (video_id,
+        stage, play_index) row, atomically claim up to `max_extra` OTHER
+        "queued" rows for the SAME video+stage across different plays, so
+        one AWS Batch job can process all of them together (one model
+        load) instead of one job per play - see ingest_pipeline_worker.py's
+        GPU-routing branch, the only caller.
+
+        Same SELECT ... FOR UPDATE SKIP LOCKED pattern as
+        dequeue_next_video, but no STAGE_SEQUENCE cross-checking is needed
+        here (unlike the general dequeue): a play's row only ever reaches
+        status="queued" for stage `stage` once that play's own upstream
+        stages have already completed, so every matching row is by
+        construction ready right now - there's no "earlier stage still
+        pending for this play" case to filter out.
+
+        Args:
+            video_id: The video the already-claimed winning item belongs to.
+            stage: The stage name (e.g. "detection"/"tracking").
+            exclude_id: The winning item's own row id - never re-claim it.
+            max_extra: Upper bound on how many additional rows to claim
+                (see settings.GPU_BATCH_MAX_PLAYS_PER_JOB).
+
+        Returns:
+            Claimed rows (each with "status" flipped to "processing" and a
+            "_doc_id" key added, matching dequeue_next_video's return
+            shape) - empty list if none were available or max_extra <= 0.
+        """
+        if max_extra <= 0:
+            return []
+        try:
+            with self.engine.begin() as conn:
+                stmt = (
+                    select(ingestion_queue)
+                    .where(ingestion_queue.c.video_id == video_id)
+                    .where(ingestion_queue.c.stage == stage)
+                    .where(ingestion_queue.c.status == "queued")
+                    .where(ingestion_queue.c.play_index.is_not(None))
+                    .where(ingestion_queue.c.id != exclude_id)
+                    .order_by(ingestion_queue.c.play_index.asc())
+                    .limit(max_extra)
+                    .with_for_update(skip_locked=True)
+                )
+                rows = [dict(r) for r in conn.execute(stmt).mappings().all()]
+
+                if not rows:
+                    return []
+
+                now = _now()
+                ids = [r["id"] for r in rows]
+                conn.execute(
+                    sa_update(ingestion_queue)
+                    .where(ingestion_queue.c.id.in_(ids))
+                    .values(status="processing", processing_started_at=now, updated_at=now)
+                )
+                # transaction commits (releasing every lock, including any
+                # skipped/unclaimed rows) when this block exits normally.
+
+            for r in rows:
+                r["status"] = "processing"
+                r["_doc_id"] = str(r["id"])
+            logger.info(
+                f"[OK] Claimed {len(rows)} sibling play(s) for {video_id}/{stage} "
+                f"(play_index={[r['play_index'] for r in rows]})"
+            )
+            return rows
+
+        except Exception as e:
+            logger.error(f"Failed to claim sibling plays for {video_id}/{stage}: {e}")
+            return []
+
     def mark_completed(self, queue_doc_id: str, metadata: Optional[Dict[str, Any]] = None) -> bool:
         """
         Mark queue item as completed and remove it from the queue.

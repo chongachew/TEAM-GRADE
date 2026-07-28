@@ -246,6 +246,15 @@ REID_OCR_TRIGGER_GAP_FRAMES = int(os.getenv("REID_OCR_TRIGGER_GAP_FRAMES", 45))
 GPU_BATCH_ENABLED = os.getenv("GPU_BATCH_ENABLED", "false").lower() in ["true", "1", "yes"]
 AWS_BATCH_JOB_QUEUE = os.getenv("AWS_BATCH_JOB_QUEUE", "team-grade-gpu-queue")
 AWS_BATCH_JOB_DEFINITION = os.getenv("AWS_BATCH_JOB_DEFINITION", "team-grade-gpu-stage")
+# Per-play redesign: how many plays' worth of detection/tracking work one
+# Batch job processes (one model load, iterate plays) instead of one job
+# per play - a real game can have 100+ plays, so this amortizes cold-start
+# cost. Deliberately conservative default: a real detection job already
+# OOM'd once in production on a single whole-video's worth of frames
+# (g4dn.xlarge's memory is shared with the GPU workload), so batching more
+# plays per job increases memory pressure and needs headroom, not just
+# throughput. Tune upward only after watching real jobs' memory usage.
+GPU_BATCH_MAX_PLAYS_PER_JOB = int(os.getenv("GPU_BATCH_MAX_PLAYS_PER_JOB", "6"))
 
 # ============================================================================
 # YOUTUBE COOKIES (bot-check bypass)

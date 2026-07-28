@@ -90,8 +90,64 @@ class TestGpuBatchRouting:
 
         worker.process_queue_item({"video_id": "v1", "stage": "detection", "_doc_id": "d1"})
 
-        submit_mock.assert_called_once_with("v1", "detection", "d1", play_index=None)
+        # No play_index on this item (whole-video-mode) - a single-item
+        # batch, no sibling-claiming attempted.
+        submit_mock.assert_called_once_with(
+            "v1", "detection", [{"queue_doc_id": "d1", "play_index": None}]
+        )
         process_stage_mock.assert_not_called()
+        worker.queue_manager.claim_sibling_plays.assert_not_called()
+
+    def test_play_scoped_item_claims_and_batches_sibling_plays(self, monkeypatch):
+        # queue_doc_id must be a stringified int here (real production
+        # shape, per queue_manager.dequeue_next_video's `str(result["id"])`)
+        # since claim_sibling_plays' exclude_id needs a real int to compare
+        # against the ingestion_queue.id integer column.
+        worker = _bare_worker()
+        monkeypatch.setattr(settings, "GPU_BATCH_ENABLED", True)
+        monkeypatch.setattr(settings, "GPU_BATCH_MAX_PLAYS_PER_JOB", 6)
+        submit_mock = MagicMock(return_value="batch-job-1")
+        monkeypatch.setattr("ingest.ingest_pipeline_worker.submit_gpu_stage_job", submit_mock)
+        worker.queue_manager.claim_sibling_plays.return_value = [
+            {"_doc_id": "2", "play_index": 1},
+            {"_doc_id": "3", "play_index": 2},
+        ]
+
+        worker.process_queue_item({"video_id": "v1", "stage": "detection", "_doc_id": "1", "play_index": 0})
+
+        worker.queue_manager.claim_sibling_plays.assert_called_once_with(
+            "v1", "detection", exclude_id=1, max_extra=5
+        )
+        submit_mock.assert_called_once_with(
+            "v1", "detection",
+            [
+                {"queue_doc_id": "1", "play_index": 0},
+                {"queue_doc_id": "2", "play_index": 1},
+                {"queue_doc_id": "3", "play_index": 2},
+            ],
+        )
+
+    def test_failed_batch_submission_marks_every_claimed_item_failed(self, monkeypatch):
+        """Not just the originally-dequeued item - every sibling play
+        claimed into this same batch, or those rows would sit "processing"
+        forever with no job left to finalize them."""
+        worker = _bare_worker()
+        monkeypatch.setattr(settings, "GPU_BATCH_ENABLED", True)
+        monkeypatch.setattr(
+            "ingest.ingest_pipeline_worker.submit_gpu_stage_job",
+            MagicMock(side_effect=RuntimeError("batch unavailable")),
+        )
+        worker.queue_manager.claim_sibling_plays.return_value = [
+            {"_doc_id": "2", "play_index": 1},
+        ]
+
+        worker.process_queue_item({"video_id": "v1", "stage": "detection", "_doc_id": "1", "play_index": 0})
+
+        assert worker.queue_manager.mark_failed.call_count == 2
+        failed_ids = {call.args[0] for call in worker.queue_manager.mark_failed.call_args_list}
+        assert failed_ids == {"1", "2"}
+        for call in worker.queue_manager.mark_failed.call_args_list:
+            assert call.kwargs.get("retry") is True
 
     def test_batch_item_is_left_unfinalized_for_the_batch_job_to_close_out(self, monkeypatch):
         worker = _bare_worker()

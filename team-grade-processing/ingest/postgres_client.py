@@ -842,11 +842,17 @@ class _SubDocRef:
     def get(self):
         if self.subname == "tracks_meta":
             track_id = int(self.doc_id)
+            # Same reasoning as .set() below - this generic ref can only
+            # ever address the whole-video-mode row (play_index IS NULL);
+            # without this filter, a video with real per-play tracks_meta
+            # rows (Phase C) could have this arbitrarily return any one of
+            # several same-track_id rows across different plays.
             with self.engine.connect() as conn:
                 row = conn.execute(
                     select(tracks_meta)
                     .where(tracks_meta.c.video_id == self.video_id)
                     .where(tracks_meta.c.track_id == track_id)
+                    .where(tracks_meta.c.play_index.is_(None))
                 ).mappings().first()
             if not row:
                 return _DocSnapshot(self.doc_id, None, False, reference=self)
@@ -872,12 +878,26 @@ class _SubDocRef:
         if self.subname == "tracks_meta":
             track_id = int(self.doc_id)
             fields.pop("track_id", None)
+            # This generic Firestore-compat doc ref has no way to know
+            # which play a track belongs to (unlike upsert_track_meta(),
+            # which takes play_index explicitly) - its only real caller is
+            # tracking_stage.py's best-effort re-ID hook, which already
+            # documents this as a known scope limitation. Target the
+            # whole-video-mode (play_index IS NULL) row specifically, since
+            # that's the only row this generic path can address - since
+            # Phase C, tracks_meta's plain (video_id, track_id) index no
+            # longer exists on its own (play_index is now part of its
+            # identity), so this MUST use the same partial-index target
+            # upsert_track_meta() uses instead of a bare 2-column one.
+            index_elements, index_where = tracks_meta_conflict_target(play_index=None)
             with self.engine.begin() as conn:
                 stmt = pg_insert(tracks_meta).values(video_id=self.video_id, track_id=track_id, **fields)
                 update_cols = {k: getattr(stmt.excluded, k) for k in fields}
                 stmt = stmt.on_conflict_do_update(
-                    index_elements=["video_id", "track_id"], set_=update_cols
-                ) if update_cols else stmt.on_conflict_do_nothing(index_elements=["video_id", "track_id"])
+                    index_elements=index_elements, index_where=index_where, set_=update_cols
+                ) if update_cols else stmt.on_conflict_do_nothing(
+                    index_elements=index_elements, index_where=index_where
+                )
                 conn.execute(stmt)
             return
 

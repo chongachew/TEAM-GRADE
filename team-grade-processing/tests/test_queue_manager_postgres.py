@@ -362,3 +362,81 @@ class TestSkipLockedDequeue:
         assert item is not None
         assert item["stage"] == "download"
         assert item["play_index"] is None
+
+
+class TestClaimSiblingPlays:
+    """GPU Batch-job batching (per-play redesign): after a normal dequeue
+    claims one (video_id, stage, play_index) winner, claim_sibling_plays()
+    grabs other already-ready plays for the same video+stage so one Batch
+    job can cover all of them - see ingest_pipeline_worker.py's GPU-routing
+    branch, the only real caller."""
+
+    def test_claims_other_plays_same_video_and_stage(self, pg_client):
+        from ingest.queue_manager import QueueManager
+
+        video_id = "siblingclaimtest01"
+        _insert_video(pg_client, video_id)
+        qm = QueueManager(pg_client)
+
+        for play_index in (0, 1, 2):
+            qm.enqueue_video(video_id, stage="detection", priority=5, play_index=play_index)
+
+        winner = qm.dequeue_next_video()
+        assert winner is not None
+
+        siblings = qm.claim_sibling_plays(
+            video_id, "detection", exclude_id=int(winner["_doc_id"]), max_extra=5
+        )
+
+        assert len(siblings) == 2
+        assert {s["play_index"] for s in siblings} == {0, 1, 2} - {winner["play_index"]}
+        assert all(s["status"] == "processing" for s in siblings)
+
+        # A second call finds nothing left to claim - everything's already
+        # "processing", not "queued".
+        assert qm.claim_sibling_plays(video_id, "detection", exclude_id=int(winner["_doc_id"]), max_extra=5) == []
+
+    def test_does_not_claim_a_different_video_or_stage(self, pg_client):
+        from ingest.queue_manager import QueueManager
+
+        video_id = "siblingclaimtest02"
+        other_video_id = "siblingclaimtest02b"
+        _insert_video(pg_client, video_id)
+        _insert_video(pg_client, other_video_id)
+        qm = QueueManager(pg_client)
+
+        qm.enqueue_video(video_id, stage="detection", priority=5, play_index=0)
+        qm.enqueue_video(video_id, stage="tracking", priority=5, play_index=1)  # different stage
+        qm.enqueue_video(other_video_id, stage="detection", priority=5, play_index=0)  # different video
+
+        winner = qm.dequeue_next_video()
+        assert winner is not None and winner["video_id"] == video_id and winner["stage"] == "detection"
+
+        siblings = qm.claim_sibling_plays(
+            video_id, "detection", exclude_id=int(winner["_doc_id"]), max_extra=5
+        )
+
+        assert siblings == []
+        stats = pg_client.get_queue_status()
+        # Both the different-stage and different-video rows are still
+        # sitting untouched as "queued".
+        assert stats["queued"] == 2
+
+    def test_respects_max_extra_cap(self, pg_client):
+        from ingest.queue_manager import QueueManager
+
+        video_id = "siblingclaimtest03"
+        _insert_video(pg_client, video_id)
+        qm = QueueManager(pg_client)
+
+        for play_index in range(5):
+            qm.enqueue_video(video_id, stage="detection", priority=5, play_index=play_index)
+
+        winner = qm.dequeue_next_video()
+        assert winner is not None
+
+        siblings = qm.claim_sibling_plays(
+            video_id, "detection", exclude_id=int(winner["_doc_id"]), max_extra=2
+        )
+
+        assert len(siblings) == 2
