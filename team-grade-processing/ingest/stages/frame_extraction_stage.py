@@ -274,23 +274,35 @@ def run_frame_extraction_stage(
             frame_count = 0
             consecutive_failures = 0
             frame_index = 0
-            frame_skip_interval = max(1, int(video_fps / fps)) if fps < video_fps else 1
-            
+            # Timestamp accumulator, not a fixed integer stride - int(video_fps / fps)
+            # truncates rather than rounds, so any source fps whose ratio to the
+            # target is just under a whole number (29.97/15 -> int(1.998) == 1,
+            # 24/15 -> int(1.6) == 1) silently disabled downsampling entirely and
+            # extracted at the full native rate instead. That desynced every
+            # downstream frame_index from the frontend's fixed
+            # currentTime * FRAME_EXTRACTION_FPS assumption (BoxOverlay.tsx),
+            # which is what made the box overlay's boxes visibly lag behind the
+            # players - live footage is essentially never an exact multiple of
+            # 15fps. Comparing real elapsed time against the next-due capture
+            # time is exact regardless of the source/target fps ratio.
+            next_capture_time = 0.0
+            frame_interval_seconds = 1.0 / fps if fps > 0 else 0.0
+
             # ✅ OPTIMIZATION: Collect frames first, then write in parallel (25% faster)
             frames_to_write = []  # Collect (frame_data, frame_count, frame_path) tuples
-            
+
             logger.info(f"[{STAGE_NAME}] Starting resilient extraction", extra={
                 "video_id": video_id_safe,
                 "target_fps": fps,
-                "frame_skip_interval": frame_skip_interval,
+                "frame_interval_seconds": frame_interval_seconds,
             })
-            
+
             while True:
                 ret, frame = cap.read()
-                
+
                 if not ret or frame is None:
                     consecutive_failures += 1
-                    
+
                     if consecutive_failures >= max_consecutive_failures:
                         logger.info(f"[{STAGE_NAME}] Extraction complete (consecutive failures threshold)", extra={
                             "video_id": video_id_safe,
@@ -298,19 +310,21 @@ def run_frame_extraction_stage(
                             "frames_extracted": frame_count,
                         })
                         break
-                    
+
                     frame_index += 1
                     continue  # Skip unreadable frame, continue
-                
+
                 # Reset consecutive failures on successful read
                 consecutive_failures = 0
-                
-                # Sample frames at specified interval
-                if frame_index % frame_skip_interval == 0:
+
+                timestamp_seconds = frame_index / video_fps
+
+                # Sample once real elapsed time reaches the next due capture instant
+                if timestamp_seconds >= next_capture_time:
+                    next_capture_time += frame_interval_seconds
                     frame_filename = f"frame_{frame_count:06d}.jpg"
                     frame_path = output_dir / frame_filename
-                    
-                    timestamp_seconds = frame_index / video_fps
+
                     frames_metadata.append({
                         "frame_index": frame_count,
                         "timestamp_seconds": timestamp_seconds,

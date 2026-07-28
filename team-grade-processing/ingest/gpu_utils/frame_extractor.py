@@ -224,9 +224,21 @@ class GPUFrameExtractor(BaseFrameExtractor):
                 f"@ {video_fps:.2f} FPS, {video_width}x{video_height}"
             )
             
-            # Calculate frame sampling interval
-            frame_skip = max(1, int(video_fps / fps)) if fps < video_fps else 1
-            
+            # Timestamp accumulator, not a fixed integer stride - see the matching
+            # comment in ingest/stages/frame_extraction_stage.py (int(video_fps / fps)
+            # truncates rather than rounds, silently disabling downsampling for common
+            # rates like 29.97fps). total_frames/video_fps are both known upfront here,
+            # so the sampled indices can be computed directly instead of in a loop.
+            frame_interval_seconds = 1.0 / fps if fps > 0 else 0.0
+            sample_indices = []
+            next_capture_time = 0.0
+            for candidate_index in range(total_frames):
+                if candidate_index / video_fps >= next_capture_time:
+                    sample_indices.append(candidate_index)
+                    next_capture_time += frame_interval_seconds
+                    if max_frames and len(sample_indices) >= max_frames:
+                        break
+
             frames_metadata = []
 
             # Write frames in parallel (CPU task, not GPU-bound)
@@ -250,10 +262,7 @@ class GPUFrameExtractor(BaseFrameExtractor):
             successful_writes = 0
             with ThreadPoolExecutor(max_workers=4) as executor:
                 futures = []
-                for frame_index in range(0, total_frames, frame_skip):
-                    if max_frames and len(frames_metadata) >= max_frames:
-                        break
-
+                for frame_index in sample_indices:
                     frame_count = len(frames_metadata)
                     frame_filename = f"frame_{frame_count:06d}.jpg"
                     frame_path = output_dir / frame_filename
@@ -364,8 +373,13 @@ class CPUFrameExtractor(BaseFrameExtractor):
                 f"@ {video_fps:.2f} FPS, {frame_width}x{frame_height}"
             )
             
-            # Calculate frame sampling interval
-            frame_skip_interval = max(1, int(video_fps / fps)) if fps < video_fps else 1
+            # Timestamp accumulator, not a fixed integer stride - see the matching
+            # comment in ingest/stages/frame_extraction_stage.py. int(video_fps / fps)
+            # truncates rather than rounds, so e.g. 29.97fps source / 15fps target
+            # gives int(1.998) == 1, silently extracting at the full native rate
+            # instead of downsampling at all.
+            next_capture_time = 0.0
+            frame_interval_seconds = 1.0 / fps if fps > 0 else 0.0
 
             frames_metadata = []
             frame_count = 0
@@ -409,15 +423,16 @@ class CPUFrameExtractor(BaseFrameExtractor):
 
                     consecutive_failures = 0
 
-                    # Sample frames at target FPS
-                    if frame_index % frame_skip_interval == 0:
+                    timestamp_seconds = frame_index / video_fps
+
+                    # Sample once real elapsed time reaches the next due capture instant
+                    if timestamp_seconds >= next_capture_time:
+                        next_capture_time += frame_interval_seconds
                         if max_frames and frame_count >= max_frames:
                             break
 
                         frame_filename = f"frame_{frame_count:06d}.jpg"
                         frame_path = output_dir / frame_filename
-
-                        timestamp_seconds = frame_index / video_fps
 
                         frames_metadata.append({
                             "frame_index": frame_count,
