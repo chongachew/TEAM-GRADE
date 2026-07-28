@@ -13,6 +13,8 @@ not even the `detection` stage).
 """
 
 import logging
+import tempfile
+from pathlib import Path
 from typing import Optional, Dict, Any
 
 from config import settings
@@ -27,10 +29,12 @@ from ingest.validation import VideoIdValidator
 from ingest.utils.firestore_utils import (
     get_utc_timestamp,
     write_plays_batch,
+    set_play_clip_ready,
     COLLECTION_VIDEOS,
     COLLECTION_CAMERA_MOTION,
 )
-from ingest.s3_client import ensure_frames_local
+from ingest.s3_client import ensure_frames_local, ensure_video_local, play_clip_key, upload_file
+from processing.clip_cutter import cut_clip
 from processing.play_boundary_detection import (
     extract_ocr_candidates,
     extract_camera_motion_candidates_from_rows,
@@ -195,6 +199,32 @@ def run_play_detection_stage(
             })
             return False, error_code
 
+        # Cut + upload each play's standalone clip inline, right here rather
+        # than as its own queued stage. The queue's dequeue_next_video groups
+        # jobs by (video_id, play_index) and always prefers whichever queued
+        # job is earliest in STAGE_SEQUENCE - a clip-export stage enqueued
+        # alongside "detection" would never win that comparison (it isn't in
+        # STAGE_SEQUENCE at all) and would starve until the play's entire
+        # detection->tracking->...->complete chain finished. Doing it inline
+        # here, before "detection" is even enqueued, sidesteps that entirely.
+        # Best-effort: a cut/upload failure for one play just leaves that
+        # play's clip_ready False permanently (not retried) and never fails
+        # this stage - the watch page falls back to seeking within the full
+        # video for that one play.
+        for doc in play_docs:
+            # Belt-and-suspenders: _export_play_clip already swallows its own
+            # errors internally, but this loop must survive even a bug in
+            # that error handling - already-written plays and the detection
+            # jobs about to be enqueued below must never be sacrificed over
+            # a clip export problem.
+            try:
+                _export_play_clip(video_id_safe, doc["play_index"], doc["start_frame"], doc["end_frame"], firestore_client)
+            except Exception as e:
+                logger.warning(f"[{STAGE_NAME}] Play clip export raised past its own handling (non-fatal): {e}", extra={
+                    "video_id": video_id_safe,
+                    "play_index": doc["play_index"],
+                })
+
         all_ok = True
         for doc in play_docs:
             try:
@@ -239,3 +269,39 @@ def run_play_detection_stage(
             "error_code": error_code
         }, exc_info=True)
         return False, error_code
+
+
+def _export_play_clip(
+    video_id_safe: str, play_index: int, start_frame: int, end_frame: int, firestore_client,
+) -> None:
+    """Cut this play's frame range out of the source video and upload it to
+    S3 at ingest.s3_client.play_clip_key(), so the watch page can play just
+    this one play. Errors are logged and swallowed - see the call site's
+    comment for why this is best-effort and non-blocking."""
+    output_path: Optional[Path] = None
+    try:
+        source_path = settings.get_video_path(video_id_safe)
+        if not source_path.exists():
+            source_path = ensure_video_local(video_id_safe)
+
+        tmp_dir = Path(tempfile.gettempdir())
+        output_path = tmp_dir / f"{video_id_safe}_play{play_index:03d}_clip.mp4"
+
+        cut_clip(source_path, start_frame, end_frame, output_path, settings.FRAME_EXTRACTION_FPS)
+        upload_file(output_path, play_clip_key(video_id_safe, play_index))
+        set_play_clip_ready(firestore_client, video_id_safe, play_index, True)
+
+        logger.info(f"[{STAGE_NAME}] Exported play clip", extra={
+            "video_id": video_id_safe,
+            "play_index": play_index,
+        })
+
+    except Exception as e:
+        logger.warning(f"[{STAGE_NAME}] Play clip export failed (non-fatal): {e}", extra={
+            "video_id": video_id_safe,
+            "play_index": play_index,
+        })
+
+    finally:
+        if output_path is not None:
+            output_path.unlink(missing_ok=True)

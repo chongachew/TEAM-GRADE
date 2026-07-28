@@ -100,6 +100,10 @@ def torso_key(video_id: str, filename: str) -> str:
     return f"{torso_prefix(video_id)}/{filename}"
 
 
+def play_clip_key(video_id: str, play_index: int) -> str:
+    return f"videos/{video_id}/plays/{play_index:03d}.mp4"
+
+
 # ============================================================================
 # Core S3 operations
 # ============================================================================

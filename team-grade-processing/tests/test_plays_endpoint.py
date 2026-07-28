@@ -99,3 +99,23 @@ class TestPlaysEndpoint:
         data = response.json()
         assert data["overall_grade"] is None
         assert data["letter_grade"] is None
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
+    def test_clip_url_present_only_when_clip_ready(self, client, mock_video_document):
+        """clip_ready is set by play_detection_stage.py's inline, best-effort
+        _export_play_clip - clip_url must be None (not a broken link) for any
+        play where that hasn't succeeded, so the watch page's fallback to
+        seeking within the full video actually gets triggered."""
+        with patch("api.server.firestore_client") as mock_fs:
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_plays(mock_fs, [
+                {"play_index": 0, "start_frame": 0, "end_frame": 99, "status": "completed", "clip_ready": True},
+                {"play_index": 1, "start_frame": 100, "end_frame": 199, "status": "completed", "clip_ready": False},
+            ])
+
+            response = client.get("/api/plays/dQw4w9WgXcQ")
+
+        data = response.json()
+        assert data["plays"][0]["clip_url"] == "/media/dQw4w9WgXcQ/plays/0.mp4"
+        assert data["plays"][1]["clip_url"] is None

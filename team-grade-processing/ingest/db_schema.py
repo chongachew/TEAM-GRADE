@@ -396,6 +396,13 @@ plays = Table(
     # Left NULL - no per-candidate confidence score exists in the validated
     # signal yet, not invented from nothing.
     Column("confidence", Float, nullable=True),
+    # Set once play_clip_export (run inline from play_detection_stage, right
+    # after this row is written) successfully cuts + uploads a standalone
+    # clip for this play's frame range to S3 at ingest.s3_client.play_clip_key().
+    # Best-effort: a cut failure just leaves this False permanently for the
+    # play, not retried - the watch page falls back to seeking within the
+    # full video for that one play, never a hard failure.
+    Column("clip_ready", Boolean, nullable=False, server_default=_sql_text("false")),
     Column("created_at", TIMESTAMP(timezone=True)),
     UniqueConstraint("video_id", "play_index", name="uq_plays_video_play_index"),
     Index("ix_plays_video_id", "video_id"),

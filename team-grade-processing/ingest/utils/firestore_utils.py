@@ -517,6 +517,28 @@ def mark_play_status(firestore_client, video_id: str, play_index: int, status: s
         return False
 
 
+def set_play_clip_ready(firestore_client, video_id: str, play_index: int, ready: bool) -> bool:
+    """Update one `plays` row's clip_ready flag, once play_clip_export has
+    (or hasn't) successfully cut+uploaded that play's standalone clip."""
+    try:
+        safe_id = settings.sanitize_id(video_id)
+        with firestore_client.engine.begin() as conn:
+            conn.execute(
+                sa_update(plays_table)
+                .where(plays_table.c.video_id == safe_id)
+                .where(plays_table.c.play_index == play_index)
+                .values(clip_ready=ready)
+            )
+        return True
+
+    except ValueError as e:
+        logger.error(f"[PG] Invalid input: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"[PG] Failed to set clip_ready for {video_id} play {play_index}: {e}")
+        return False
+
+
 def count_incomplete_plays(
     firestore_client, video_id: str,
     completed_status: str = "completed", failed_status: str = "failed",

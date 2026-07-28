@@ -157,3 +157,99 @@ def test_invalid_video_id_fails_validation():
     assert success is False
     assert error is not None
     mock_queue.enqueue_video.assert_not_called()
+
+
+class TestExportPlayClip:
+    """_export_play_clip is called inline (not as its own queued stage - see
+    the comment at its call site for why) for every play right after
+    write_plays_batch succeeds. It must never raise or fail the stage."""
+
+    def test_success_marks_clip_ready(self, tmp_path, monkeypatch):
+        mock_firestore = _mock_firestore()
+        source = tmp_path / "video.mp4"
+        source.write_bytes(b"fake")
+        monkeypatch.setattr(play_detection_stage.settings, "get_video_path", lambda video_id: source)
+
+        with patch.object(play_detection_stage, "cut_clip") as mock_cut, \
+             patch.object(play_detection_stage, "upload_file") as mock_upload, \
+             patch.object(play_detection_stage, "set_play_clip_ready") as mock_set_ready:
+
+            def fake_cut(source_path, start_frame, end_frame, output_path, fps):
+                output_path.write_bytes(b"clip")
+
+            mock_cut.side_effect = fake_cut
+
+            play_detection_stage._export_play_clip(
+                "dQw4w9WgXcQ", 0, 0, 149, mock_firestore
+            )
+
+        mock_upload.assert_called_once()
+        mock_set_ready.assert_called_once_with(mock_firestore, "dQw4w9WgXcQ", 0, True)
+
+    def test_cut_failure_is_swallowed_and_never_marks_ready(self, tmp_path, monkeypatch):
+        mock_firestore = _mock_firestore()
+        source = tmp_path / "video.mp4"
+        source.write_bytes(b"fake")
+        monkeypatch.setattr(play_detection_stage.settings, "get_video_path", lambda video_id: source)
+
+        with patch.object(play_detection_stage, "cut_clip", side_effect=Exception("ffmpeg exploded")), \
+             patch.object(play_detection_stage, "upload_file") as mock_upload, \
+             patch.object(play_detection_stage, "set_play_clip_ready") as mock_set_ready:
+
+            # Must not raise.
+            play_detection_stage._export_play_clip(
+                "dQw4w9WgXcQ", 0, 0, 149, mock_firestore
+            )
+
+        mock_upload.assert_not_called()
+        mock_set_ready.assert_not_called()
+
+    def test_missing_source_falls_back_to_ensure_video_local(self, tmp_path, monkeypatch):
+        mock_firestore = _mock_firestore()
+        missing = tmp_path / "does_not_exist.mp4"
+        fetched = tmp_path / "fetched.mp4"
+        fetched.write_bytes(b"fake")
+        monkeypatch.setattr(play_detection_stage.settings, "get_video_path", lambda video_id: missing)
+
+        with patch.object(play_detection_stage, "ensure_video_local", return_value=fetched) as mock_ensure, \
+             patch.object(play_detection_stage, "cut_clip") as mock_cut, \
+             patch.object(play_detection_stage, "upload_file"), \
+             patch.object(play_detection_stage, "set_play_clip_ready"):
+
+            def fake_cut(source_path, start_frame, end_frame, output_path, fps):
+                assert source_path == fetched
+                output_path.write_bytes(b"clip")
+
+            mock_cut.side_effect = fake_cut
+
+            play_detection_stage._export_play_clip(
+                "dQw4w9WgXcQ", 0, 0, 149, mock_firestore
+            )
+
+        mock_ensure.assert_called_once_with("dQw4w9WgXcQ")
+
+    def test_a_failed_export_does_not_fail_the_whole_stage(self, tmp_path, monkeypatch):
+        """Even if _export_play_clip's own internal error handling somehow
+        fails to catch something (a bug in that function), the call site's
+        own try/except must stop it from sacrificing the plays already
+        written and the detection jobs about to be enqueued."""
+        frames_dir = tmp_path / "frames"
+        _write_fake_frames(frames_dir, 300)
+        monkeypatch.setattr(play_detection_stage.settings, "get_frames_dir", lambda video_id: frames_dir)
+
+        mock_firestore = _mock_firestore()
+        mock_queue = MagicMock()
+        mock_queue.enqueue_video.return_value = True
+
+        with patch.object(play_detection_stage, "extract_ocr_candidates", return_value=[(50, 50 / 15.0)]), \
+             patch.object(play_detection_stage, "extract_camera_motion_candidates_from_rows", return_value=[(150, 150 / 15.0)]), \
+             patch.object(play_detection_stage, "write_plays_batch", side_effect=lambda fc, vid, docs: len(docs)), \
+             patch.object(play_detection_stage, "_export_play_clip", side_effect=Exception("should never propagate")):
+            success, error = play_detection_stage.run_play_detection_stage(
+                mock_firestore, "dQw4w9WgXcQ", mock_queue
+            )
+
+        assert success is True
+        assert error is None
+        assert mock_queue.enqueue_video.call_count == 2
+

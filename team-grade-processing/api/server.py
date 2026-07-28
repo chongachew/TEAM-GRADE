@@ -84,6 +84,7 @@ from ingest.youtube_metadata import YouTubeMetadataExtractor
 from ingest.utils.firestore_utils import COLLECTION_TRACKS, COLLECTION_TRACKS_META, COLLECTION_PLAYS
 from ingest.stages.biomechanics_stage_vectorized import _extract_pose_features, _load_trait_configs
 from processing.vectorized_traits import VectorizedTraitScorer
+from processing.clip_cutter import cut_clip, ClipCutError
 import numpy as np
 
 # Import centralized constants
@@ -108,6 +109,7 @@ from ingest.s3_client import (
     download_file,
     video_key,
     torso_key,
+    play_clip_key,
     file_exists_in_s3,
     get_presigned_url,
     ensure_video_local,
@@ -210,6 +212,45 @@ async def get_media_video(video_id: str):
     except Exception as e:
         logger.error(f"[FAIL] Media retrieval error for {safe_video_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to retrieve video: {str(e)}")
+
+
+@app.get("/media/{video_id}/plays/{play_index}.mp4")
+async def get_media_play_clip(video_id: str, play_index: int):
+    """Serve (via presigned-URL redirect) one play's standalone clip -
+    same pattern as get_media_video above, but for the per-play clips
+    play_detection_stage.py cuts+uploads inline at ingest.s3_client
+    .play_clip_key(). Unlike the full video, there's no local-disk
+    fallback here - these clips only ever exist in S3 (the API container
+    never writes them locally, play_detection_stage.py's worker uploads
+    and deletes its local temp copy immediately).
+
+    Raises:
+        HTTPException: 400 for an invalid video_id, 404 if the clip isn't
+            in S3 (export never ran, or failed - see GET /api/plays'
+            clip_url, which is None in exactly this case, so a well-behaved
+            client shouldn't normally reach this route for such a play).
+    """
+    try:
+        safe_video_id = settings.sanitize_id(video_id)
+    except (ValueError, ImportError) as e:
+        logger.warning(f"Invalid video_id format: {e}")
+        raise HTTPException(status_code=400, detail="Invalid video_id format")
+
+    try:
+        s3_key = play_clip_key(safe_video_id, play_index)
+        if file_exists_in_s3(s3_key):
+            url = get_presigned_url(s3_key)
+            return RedirectResponse(url=url, status_code=302)
+
+        raise HTTPException(
+            status_code=404, detail=f"No clip available for {safe_video_id} play {play_index}"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[FAIL] Play clip retrieval error for {safe_video_id}/{play_index}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve play clip: {str(e)}")
 
 
 # Initialize ingestion components
@@ -1091,7 +1132,7 @@ async def get_plays(video_id: str) -> Dict[str, Any]:
 
     Returns:
         {"plays": [{"play_index", "start_frame", "end_frame", "status",
-                    "detection_method"}, ...],
+                    "detection_method", "clip_url"}, ...],
          "overall_grade": float | None, "letter_grade": str | None}
         Empty "plays" list (not a 404) if the video exists but
         play_detection hasn't run yet, or this is a single-athlete-mode
@@ -1099,6 +1140,10 @@ async def get_plays(video_id: str) -> Dict[str, Any]:
         vs. not ready" distinction get_analysis already makes.
         overall_grade/letter_grade are None until complete_stage.py sets
         them (see ingest/stages/complete_stage.py::_compute_overall_grade).
+        clip_url is None whenever clip_ready is falsy (export hasn't run,
+        or failed - see play_detection_stage.py's inline, best-effort
+        _export_play_clip) - the watch page falls back to seeking within
+        the full video for that one play in that case.
 
     Raises:
         HTTPException: If the video itself doesn't exist
@@ -1140,6 +1185,11 @@ async def get_plays(video_id: str) -> Dict[str, Any]:
             (doc.to_dict() for doc in plays_ref.stream()),
             key=lambda p: p.get("play_index", 0),
         )
+        for play in plays:
+            play["clip_url"] = (
+                f"/media/{safe_video_id}/plays/{play['play_index']}.mp4"
+                if play.get("clip_ready") else None
+            )
 
         logger.info(f"Retrieved {len(plays)} play(s) for {safe_video_id}")
         return {
@@ -1421,6 +1471,134 @@ async def get_frame_boxes(video_id: str, frame_index: int) -> Dict[str, Any]:
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"Failed to retrieve frame boxes: {str(e)}")
+
+
+@app.get("/api/tracks/{video_id}/route/{track_id}")
+async def get_track_route(
+    video_id: str, track_id: int, play_index: Optional[int] = Query(None)
+) -> Dict[str, Any]:
+    """
+    Get one track's movement path across a play - the sequence of bbox
+    bottom-centers (feet position, a better on-field-location proxy than the
+    box centroid) over the track's frame range, feeds the watch page's
+    spotlight route overlay.
+
+    play_index should be given whenever available: track_id resets to 0 on
+    every play (Phase C's per-play redesign), so omitting it would blend
+    together every play's identically-numbered track into one nonsensical
+    path.
+
+    Raises:
+        HTTPException: If the video itself doesn't exist
+    """
+    try:
+        safe_video_id = settings.sanitize_id(video_id)
+    except (ValueError, ImportError) as e:
+        logger.warning(f"Invalid video_id format: {e}")
+        raise HTTPException(status_code=400, detail="Invalid video_id format")
+
+    if not firestore_client:
+        raise HTTPException(status_code=503, detail="Firestore client not available")
+
+    try:
+        video_data = firestore_client.get_video_status(safe_video_id)
+        if not video_data:
+            raise HTTPException(status_code=404, detail=f"Video {safe_video_id} not found")
+
+        tracks_ref = (
+            firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+            .document(safe_video_id)
+            .collection(COLLECTION_TRACKS)
+            .where("track_id", "==", track_id)
+        )
+        if play_index is not None:
+            tracks_ref = tracks_ref.where("play_index", "==", play_index)
+
+        rows = sorted(
+            (d.to_dict() for d in tracks_ref.stream()),
+            key=lambda r: r.get("frame_index", 0),
+        )
+
+        points = []
+        for row in rows:
+            bbox = row.get("bbox")
+            if not bbox or len(bbox) != 4:
+                continue
+            x1, y1, x2, y2 = bbox
+            points.append({
+                "frame_index": row.get("frame_index"),
+                "timestamp_seconds": row.get("frame_index", 0) / settings.FRAME_EXTRACTION_FPS,
+                "x": (x1 + x2) / 2,
+                "y": y2,
+            })
+
+        return {"track_id": track_id, "play_index": play_index, "points": points}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"[FAIL] Track route retrieval error for {safe_video_id}/{track_id}: {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve track route: {str(e)}")
+
+
+@app.get("/api/pose/{video_id}/frame/{frame_index}")
+async def get_frame_pose(
+    video_id: str, frame_index: int, play_index: Optional[int] = Query(None)
+) -> Dict[str, Any]:
+    """
+    Get per-track pose keypoints for one exact frame - feeds the watch
+    page's skeletal overlay, one small request per displayed frame, same
+    shape/pattern as get_frame_boxes above but reading the `pose` collection
+    instead of `tracks`.
+
+    Raises:
+        HTTPException: If the video itself doesn't exist
+    """
+    try:
+        safe_video_id = settings.sanitize_id(video_id)
+    except (ValueError, ImportError) as e:
+        logger.warning(f"Invalid video_id format: {e}")
+        raise HTTPException(status_code=400, detail="Invalid video_id format")
+
+    if not firestore_client:
+        raise HTTPException(status_code=503, detail="Firestore client not available")
+
+    try:
+        video_data = firestore_client.get_video_status(safe_video_id)
+        if not video_data:
+            raise HTTPException(status_code=404, detail=f"Video {safe_video_id} not found")
+
+        pose_ref = (
+            firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+            .document(safe_video_id)
+            .collection(settings.COLLECTION_POSE)
+            .where("frame_index", "==", frame_index)
+        )
+        if play_index is not None:
+            pose_ref = pose_ref.where("play_index", "==", play_index)
+
+        poses = [
+            {
+                "track_id": d.to_dict().get("track_id"),
+                "landmarks": d.to_dict().get("landmarks"),
+                "confidence_mean": d.to_dict().get("confidence_mean"),
+            }
+            for d in pose_ref.stream()
+        ]
+
+        return {"frame_index": frame_index, "poses": poses}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"[FAIL] Frame pose retrieval error for {safe_video_id}/{frame_index}: {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve frame pose: {str(e)}")
 
 
 def _find_rep_doc(
@@ -1845,24 +2023,19 @@ async def get_rep_clip(
                 str(output_path),
             ]
             overlay_applied = True
+            result = subprocess.run(ffmpeg_cmd, capture_output=True, timeout=60)
+            if result.returncode != 0 or not output_path.exists():
+                logger.error(
+                    f"[FAIL] ffmpeg clip cut failed for {safe_video_id} rep {rep_index}: "
+                    f"{result.stderr.decode(errors='replace')}"
+                )
+                raise HTTPException(status_code=500, detail="Failed to cut clip")
         else:
-            ffmpeg_cmd = [
-                "ffmpeg", "-y",
-                "-ss", str(start_seconds),
-                "-i", str(source_path),
-                "-t", str(duration_seconds),
-                "-c", "copy",
-                str(output_path),
-            ]
-
-        result = subprocess.run(ffmpeg_cmd, capture_output=True, timeout=60)
-
-        if result.returncode != 0 or not output_path.exists():
-            logger.error(
-                f"[FAIL] ffmpeg clip cut failed for {safe_video_id} rep {rep_index}: "
-                f"{result.stderr.decode(errors='replace')}"
-            )
-            raise HTTPException(status_code=500, detail="Failed to cut clip")
+            try:
+                cut_clip(source_path, start_frame, end_frame, output_path, settings.FRAME_EXTRACTION_FPS)
+            except ClipCutError as e:
+                logger.error(f"[FAIL] ffmpeg clip cut failed for {safe_video_id} rep {rep_index}: {e}")
+                raise HTTPException(status_code=500, detail="Failed to cut clip")
 
         logger.info(
             f"[OK] Cut clip for {safe_video_id} rep {rep_index} -> {output_path} "
