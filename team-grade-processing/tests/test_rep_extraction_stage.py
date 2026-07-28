@@ -150,7 +150,10 @@ def test_single_athlete_path_unaffected_when_flag_disabled(monkeypatch):
     mock_queue = MagicMock()
     mock_queue.enqueue_video.return_value = True
 
-    with patch.object(rep_extraction_stage, "write_reps_batch", return_value=0):
+    def fake_write_reps_batch(firestore_client, video_id, reps):
+        return len(reps)
+
+    with patch.object(rep_extraction_stage, "write_reps_batch", side_effect=fake_write_reps_batch):
         success, error = rep_extraction_stage.run_rep_extraction_stage(
             mock_firestore, "dQw4w9WgXcQ", mock_queue
         )
@@ -198,6 +201,49 @@ def test_run_rep_extraction_stage_scopes_to_one_play(monkeypatch):
         assert all(rep["play_index"] == 1 for rep in written["reps"])
     assert mock_update_status.call_args.kwargs["play_index"] == 1
     assert mock_queue.enqueue_video.call_args.kwargs["play_index"] == 1
+
+
+def test_partial_write_reps_batch_failure_is_reported_not_silently_succeeded(monkeypatch):
+    """Regression test: write_reps_batch swallows its own DB errors and
+    returns a short count instead of raising (e.g. a per-row ON CONFLICT
+    failure drops that row/batch silently - see its docstring). Previously
+    run_rep_extraction_stage ignored write_reps_batch's return value
+    entirely, so a partial write still marked the stage completed and
+    enqueued biomechanics against stale/missing rep rows, with no retry ever
+    triggered. The stage must now report FIRESTORE_ERROR (triggering the
+    normal retry path) whenever fewer reps were written than requested.
+    """
+    monkeypatch.setattr(rep_extraction_stage.settings, "MULTI_PLAYER_TRACKING_ENABLED", True)
+
+    poses_docs = [
+        _make_pose_doc(0, track_id=5),
+        _make_pose_doc(1, track_id=9),
+        _make_pose_doc(1, track_id=5),
+        _make_pose_doc(2, track_id=9),
+        _make_pose_doc(2, track_id=5),
+    ]
+
+    mock_firestore = MagicMock()
+    mock_poses_collection = MagicMock()
+    mock_poses_collection.stream.return_value = poses_docs
+    mock_firestore.db.collection.return_value.document.return_value.collection.return_value = mock_poses_collection
+
+    mock_queue = MagicMock()
+    mock_queue.enqueue_video.return_value = True
+
+    with patch.object(rep_extraction_stage, "write_reps_batch", return_value=1) as mock_write, \
+         patch.object(rep_extraction_stage, "update_stage_status") as mock_update_status:
+        mock_firestore.db.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value.exists = False
+
+        success, error = rep_extraction_stage.run_rep_extraction_stage(
+            mock_firestore, "dQw4w9WgXcQ", mock_queue
+        )
+
+    assert mock_write.called
+    assert success is False
+    assert error == "FIRESTORE_ERROR"
+    mock_update_status.assert_not_called()
+    mock_queue.enqueue_video.assert_not_called()
 
 
 def test_run_rep_extraction_stage_missing_play_row_returns_error():

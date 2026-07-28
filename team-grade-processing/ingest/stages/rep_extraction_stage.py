@@ -105,7 +105,20 @@ def run_rep_extraction_stage(
             if reps_data:
                 for rep in reps_data:
                     rep["play_index"] = play_index
-                write_reps_batch(firestore_client, video_id_safe, reps_data)
+                written = write_reps_batch(firestore_client, video_id_safe, reps_data)
+                # write_reps_batch swallows its own DB errors and returns a
+                # short count rather than raising (see its docstring) - a
+                # per-row ON CONFLICT failure silently dropped that batch's
+                # writes here previously, with the stage still reporting
+                # success and enqueueing biomechanics against stale/missing
+                # rep rows. Treat "wrote fewer than requested" the same as
+                # any other stage failure so it retries instead of silently
+                # continuing.
+                if written != len(reps_data):
+                    logger.error(f"[{STAGE_NAME}] write_reps_batch wrote {written}/{len(reps_data)} reps", extra={
+                        "video_id": video_id_safe, "play_index": play_index, "error_code": "FIRESTORE_ERROR"
+                    })
+                    return False, "FIRESTORE_ERROR"
 
             update_stage_status(
                 firestore_client, video_id_safe, STAGE_NAME, "completed",
