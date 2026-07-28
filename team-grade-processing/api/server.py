@@ -997,7 +997,13 @@ async def get_analysis(
         # independently, so this just reads whatever's already on video_data
         # with no extra Firestore call. Soft-flag here; Bridge Athletics'
         # claim-to-profile route is the one place that hard-blocks on this.
-        authenticity_signals = video_data.get("authenticity_signals", {})
+        # video_data comes straight from a Postgres row (every column always
+        # present) - unlike a Firestore doc, a genuinely-NULL column value
+        # means .get(key, {}) returns None (the real stored value), not the
+        # default, since the key itself is never actually absent. Real bug
+        # this crashed on (2026-07-28): a video whose authenticity_check
+        # stage never ran/wrote anything left this column NULL.
+        authenticity_signals = video_data.get("authenticity_signals") or {}
         authenticity_flagged = any(sig.get("flagged") for sig in authenticity_signals.values())
 
         logger.info(f"Retrieved {len(reps)} rep analysis record(s) for {safe_video_id} (provisional={provisional})")

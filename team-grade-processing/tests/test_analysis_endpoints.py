@@ -66,6 +66,28 @@ class TestAnalysisEndpoint:
 
     @pytest.mark.endpoints
     @pytest.mark.integration
+    def test_get_analysis_handles_null_authenticity_signals_column(self, client, mock_video_document):
+        """Real 500 found live in production (2026-07-28): video_data comes
+        from a real Postgres row where every column is always present as a
+        dict key - a video whose authenticity_check stage never ran left
+        this column genuinely NULL (not absent), so
+        video_data.get("authenticity_signals", {}) returned None (the real
+        stored value, not the default) and .values() on it crashed the
+        whole endpoint."""
+        video_with_null_signals = {**mock_video_document, "authenticity_signals": None}
+        with patch("api.server.firestore_client") as mock_fs:
+            mock_fs.get_video_status.return_value = video_with_null_signals
+            _wire_subcollections(mock_fs, analysis_docs=[])
+
+            response = client.get("/api/analysis/dQw4w9WgXcQ")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["authenticity_signals"] == {}
+            assert data["authenticity_flagged"] is False
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
     def test_get_analysis_track_id_filter(self, client, mock_video_document):
         with patch("api.server.firestore_client") as mock_fs:
             mock_fs.get_video_status.return_value = mock_video_document
