@@ -849,14 +849,20 @@ async def get_status(video_id: str) -> StatusResponse:
 
 @app.get("/api/analysis/{video_id}")
 async def get_analysis(
-    video_id: str, track_id: Optional[int] = Query(None)
+    video_id: str, track_id: Optional[int] = Query(None), player_id: Optional[str] = Query(None)
 ) -> Dict[str, Any]:
     """
     Get per-rep analysis results for a video.
 
     Args:
         video_id: YouTube video ID (will be validated)
-        track_id: optional filter to scope the returned reps to one tracked player
+        track_id: optional filter to scope the returned reps to one raw
+            (track_id, whatever play it happens to match first) instance -
+            prefer player_id, which is unambiguous across plays
+        player_id: optional filter to scope the returned reps to one
+            cross-play player identity (see _group_tracks_by_player) -
+            every rep belonging to that real player, across every play they
+            appear in. Takes precedence over track_id if both are given.
 
     Returns:
         {"reps": [{"rep_index", "track_id", "traits", "buckets", "overall_grade"}, ...],
@@ -1033,7 +1039,12 @@ async def get_analysis(
                 (rep.get("track_id"), rep.get("play_index")), "track_0_x"
             )
 
-        if track_id is not None:
+        if player_id is not None:
+            # Cross-play filter: every rep belonging to the same real player
+            # (see _group_tracks_by_player), spanning every play they appear
+            # in - not just one (track_id, play_index) instance.
+            reps = [r for r in reps if r.get("player_id") == player_id]
+        elif track_id is not None:
             reps = [r for r in reps if r.get("track_id") == track_id]
 
         # Combined authenticity flag - OR of whatever signals are present.

@@ -157,6 +157,41 @@ class TestAnalysisEndpoint:
 
     @pytest.mark.endpoints
     @pytest.mark.integration
+    def test_get_analysis_player_id_filter_spans_plays(self, client, mock_video_document):
+        """?player_id= must return every rep belonging to that cross-play
+        player, across every play - not just one (track_id, play_index)
+        instance, unlike the older ?track_id= filter."""
+        with patch("api.server.firestore_client") as mock_fs:
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_subcollections(
+                mock_fs,
+                analysis_docs=[
+                    {"rep_index": 0, "track_id": 0, "play_index": 2, "traits": {}, "buckets": {}, "overall_grade": 70.0},
+                    {"rep_index": 0, "track_id": 3, "play_index": 6, "traits": {}, "buckets": {}, "overall_grade": 85.0},
+                    {"rep_index": 0, "track_id": 9, "play_index": 6, "traits": {}, "buckets": {}, "overall_grade": 50.0},
+                ],
+                reps_docs=[
+                    {"rep_index": 0, "track_id": 0, "play_index": 2, "start_frame": 100, "end_frame": 120},
+                    {"rep_index": 0, "track_id": 3, "play_index": 6, "start_frame": 4660, "end_frame": 4680},
+                    {"rep_index": 0, "track_id": 9, "play_index": 6, "start_frame": 5000, "end_frame": 5020},
+                ],
+                tracks_meta_docs=[
+                    {"track_id": 0, "play_index": 2, "jersey_number": "23", "jersey_confidence": 0.9},
+                    {"track_id": 3, "play_index": 6, "jersey_number": "23", "jersey_confidence": 0.85},
+                    {"track_id": 9, "play_index": 6, "jersey_number": "45", "jersey_confidence": 0.9},
+                ],
+            )
+
+            response = client.get("/api/analysis/dQw4w9WgXcQ?player_id=jersey_23")
+
+            assert response.status_code == 200
+            reps = response.json()["reps"]
+            assert len(reps) == 2
+            assert {r["play_index"] for r in reps} == {2, 6}
+            assert all(r["player_id"] == "jersey_23" for r in reps)
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
     def test_get_analysis_track_id_filter(self, client, mock_video_document):
         with patch("api.server.firestore_client") as mock_fs:
             mock_fs.get_video_status.return_value = mock_video_document
