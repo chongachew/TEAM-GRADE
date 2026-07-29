@@ -22,6 +22,11 @@ from ingest.validation import VideoIdValidator
 from ingest.utils.firestore_utils import get_utc_timestamp, write_detections_batch, get_play, update_stage_status
 from ingest.s3_client import ensure_frames_local
 from ingest.frame_range import list_frame_paths_by_index
+from processing.field_boundary import (
+    point_in_field,
+    refine_boundary_with_lines,
+    segment_field_polygon,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -175,14 +180,18 @@ def run_detection_stage(
             for batch_start in range(0, len(ordered_frames), batch_size):
                 batch = ordered_frames[batch_start: batch_start + batch_size]
                 images = []
+                frames_bgr = []
                 valid_indices = []
                 for frame_idx, path in batch:
                     frame = cv2.imread(str(path))
                     if frame is None:
                         logger.debug(f"[{STAGE_NAME}] Skipped unreadable frame: {frame_idx}")
                         continue
-                    # RF-DETR expects RGB channel order.
+                    # RF-DETR expects RGB channel order; field_boundary's
+                    # HSV-based segmentation expects the original BGR frame -
+                    # keep both rather than converting back and forth.
                     images.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                    frames_bgr.append(frame)
                     valid_indices.append(frame_idx)
 
                 if not images:
@@ -199,7 +208,23 @@ def run_detection_stage(
                 if not isinstance(results, list):
                     results = [results]
 
-                for frame_idx, detections in zip(valid_indices, results):
+                for frame_idx, detections, frame_bgr in zip(valid_indices, results, frames_bgr):
+                    field_polygon = None
+                    if settings.FIELD_BOUNDARY_FILTER_ENABLED:
+                        field_polygon = segment_field_polygon(frame_bgr)
+                        if field_polygon is not None and settings.FIELD_BOUNDARY_LINE_REFINEMENT_ENABLED:
+                            field_polygon = refine_boundary_with_lines(frame_bgr, field_polygon)
+                        elif field_polygon is None:
+                            # Fail open: segmentation failed on this frame
+                            # (e.g. corrupted/blank) - keep every detection
+                            # rather than dropping a whole frame's real
+                            # players over one bad mask.
+                            logger.warning(f"[{STAGE_NAME}] Field segmentation failed, "
+                                            f"skipping boundary filter for this frame", extra={
+                                "video_id": video_id_safe,
+                                "frame_index": frame_idx,
+                            })
+
                     class_names = detections.data.get("class_name", [])
                     det_idx = 0
                     for i in range(len(detections.xyxy)):
@@ -207,6 +232,14 @@ def run_detection_stage(
                         if name not in settings.DETECTION_CLASS_NAMES:
                             continue
                         x1, y1, x2, y2 = [float(v) for v in detections.xyxy[i]]
+                        if field_polygon is not None:
+                            # Bottom-center of the bbox approximates where the
+                            # person's feet touch the ground - the standard
+                            # convention for testing "is this person on the
+                            # field" rather than the whole (taller) bbox.
+                            foot_x, foot_y = (x1 + x2) / 2.0, y2
+                            if not point_in_field(foot_x, foot_y, field_polygon):
+                                continue
                         detections_out.append({
                             "frame_index": frame_idx,
                             "detection_index": det_idx,

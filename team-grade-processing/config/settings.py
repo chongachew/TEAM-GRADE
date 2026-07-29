@@ -169,6 +169,53 @@ TORSO_CROP_WIDTH = 256  # Standard crop width
 TORSO_CROP_HEIGHT = 256  # Standard crop height
 
 # ============================================================================
+# ROLE CLASSIFICATION SETTINGS (referee/staff vs. player, classical CV)
+# ============================================================================
+# Classifies each track's torso crop as "referee" (black/white striped
+# uniform), "player", or "uncertain" - see processing/uniform_classifier.py.
+# Runs as its own pipeline stage between torso_crop and jersey_ocr.
+
+ROLE_CLASSIFICATION_ENABLED = os.getenv("ROLE_CLASSIFICATION_ENABLED", "false").lower() in ["true", "1", "yes"]
+
+# Crops smaller than this on either side are too degenerate to classify
+# reliably (heavy motion blur, a track caught only at the very frame edge).
+UNIFORM_CLASSIFIER_MIN_CROP_SIZE_PX = int(os.getenv("UNIFORM_CLASSIFIER_MIN_CROP_SIZE_PX", 20))
+# Restrict analysis to this fraction of the crop's center (width and
+# height) - mirrors scripts/pixel_motion_fallback.py's CENTER_CROP_FRAC
+# convention, here to avoid a second person or background at the crop's
+# margins (real torso crops for this project can include more than one
+# person in dense formations - see processing/uniform_classifier.py).
+UNIFORM_CLASSIFIER_CENTER_CROP_FRAC = float(os.getenv("UNIFORM_CLASSIFIER_CENTER_CROP_FRAC", 0.6))
+# HSV saturation below this counts as "grayscale" (candidate black/white
+# material) rather than a team color.
+UNIFORM_CLASSIFIER_SAT_THRESHOLD = int(os.getenv("UNIFORM_CLASSIFIER_SAT_THRESHOLD", 60))
+# Below this grayscale-pixel fraction, there's enough real team color that
+# this isn't a referee uniform at all - skip the stripe-pattern check.
+UNIFORM_CLASSIFIER_MIN_LOW_SAT_FRAC = float(os.getenv("UNIFORM_CLASSIFIER_MIN_LOW_SAT_FRAC", 0.35))
+# Grayscale intensity (0-255) bands used to detect real alternating stripes,
+# ignoring mid-tone pixels (shadow/fold/JPEG-noise territory, not signal).
+UNIFORM_CLASSIFIER_DARK_THRESHOLD = int(os.getenv("UNIFORM_CLASSIFIER_DARK_THRESHOLD", 90))
+UNIFORM_CLASSIFIER_LIGHT_THRESHOLD = int(os.getenv("UNIFORM_CLASSIFIER_LIGHT_THRESHOLD", 170))
+# A row must have at least this fraction of pixels in EACH band to be a
+# stripe-pattern candidate at all.
+UNIFORM_CLASSIFIER_MIN_BAND_FRAC = float(os.getenv("UNIFORM_CLASSIFIER_MIN_BAND_FRAC", 0.15))
+# ...and must alternate between the dark/light bands at least this many
+# times (ignoring mid-tone pixels) to count as a genuinely striped row.
+UNIFORM_CLASSIFIER_MIN_BAND_TRANSITIONS = int(os.getenv("UNIFORM_CLASSIFIER_MIN_BAND_TRANSITIONS", 3))
+# Fraction of sampled rows that must qualify as "striped" to call the whole
+# crop a referee uniform - a real striped shirt only occupies part of even
+# a torso-tight crop's height once head/pants are included, so this is
+# deliberately well under 1.0. Calibrated against real crops from
+# rRDZymlc8aI (loose detection-bbox crops and real torso_crop_stage output)
+# - a placeholder pending a larger real-data pass (see plan file).
+UNIFORM_CLASSIFIER_MIN_STRIPED_ROW_FRAC = float(os.getenv("UNIFORM_CLASSIFIER_MIN_STRIPED_ROW_FRAC", 0.25))
+# How many of a track's torso crops to sample (spread across its lifetime)
+# when aggregating a per-track role - mirrors jersey_ocr's own per-track
+# early-stop convention, so one bad-angle/motion-blurred crop can't flip the
+# whole track's classification.
+ROLE_CLASSIFICATION_MAX_CROPS_PER_TRACK = int(os.getenv("ROLE_CLASSIFICATION_MAX_CROPS_PER_TRACK", 5))
+
+# ============================================================================
 # JERSEY OCR SETTINGS
 # ============================================================================
 
@@ -217,6 +264,33 @@ DETECTION_CLASS_NAMES = ["person"]  # Phase 1: pretrained COCO "person" class, z
 # Batch instance - fixed there too, but this smaller batch size is kept
 # regardless as a real memory-pressure fix, not just a GPU workaround.
 DETECTION_BATCH_SIZE = int(os.getenv("DETECTION_BATCH_SIZE", 8))
+
+# ============================================================================
+# FIELD BOUNDARY FILTER SETTINGS
+# ============================================================================
+# Filters out detections that fall outside the playing field (crowd, sideline
+# staff, bystanders) - see processing/field_boundary.py. Two independent
+# flags: the base green-turf filter, and an optional line-refinement pass on
+# top - kept separate so each can be proven live before the other ships.
+
+FIELD_BOUNDARY_FILTER_ENABLED = os.getenv("FIELD_BOUNDARY_FILTER_ENABLED", "false").lower() in ["true", "1", "yes"]
+FIELD_BOUNDARY_LINE_REFINEMENT_ENABLED = os.getenv("FIELD_BOUNDARY_LINE_REFINEMENT_ENABLED", "false").lower() in ["true", "1", "yes"]
+
+# HSV green-turf range - calibrated against real rRDZymlc8aI frames (natural
+# grass, daylight broadcast footage). Revisit for artificial turf or very
+# different lighting.
+FIELD_BOUNDARY_GREEN_HUE_MIN = int(os.getenv("FIELD_BOUNDARY_GREEN_HUE_MIN", 30))
+FIELD_BOUNDARY_GREEN_HUE_MAX = int(os.getenv("FIELD_BOUNDARY_GREEN_HUE_MAX", 95))
+FIELD_BOUNDARY_GREEN_SAT_MIN = int(os.getenv("FIELD_BOUNDARY_GREEN_SAT_MIN", 30))
+FIELD_BOUNDARY_GREEN_VAL_MIN = int(os.getenv("FIELD_BOUNDARY_GREEN_VAL_MIN", 30))
+# Reject a segmented "field" smaller than this many pixels as degenerate
+# (corrupted/blank frame) rather than trusting a tiny stray green blob.
+FIELD_BOUNDARY_MIN_AREA_PX = int(os.getenv("FIELD_BOUNDARY_MIN_AREA_PX", 5000))
+
+# Line-refinement pass (only used when FIELD_BOUNDARY_LINE_REFINEMENT_ENABLED).
+FIELD_BOUNDARY_LINE_BAND_PX = int(os.getenv("FIELD_BOUNDARY_LINE_BAND_PX", 22))
+FIELD_BOUNDARY_HOUGH_THRESHOLD = int(os.getenv("FIELD_BOUNDARY_HOUGH_THRESHOLD", 40))
+FIELD_BOUNDARY_HOUGH_MIN_LINE_LENGTH_FRAC = float(os.getenv("FIELD_BOUNDARY_HOUGH_MIN_LINE_LENGTH_FRAC", 0.10))
 
 # ============================================================================
 # TRACKING SETTINGS (SAM2 + density-aware memory bank)

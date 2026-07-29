@@ -352,6 +352,35 @@ class TestFrameBoxesEndpoint:
 
     @pytest.mark.endpoints
     @pytest.mark.integration
+    def test_get_frame_boxes_joins_role_from_tracks_meta(self, client, mock_video_document):
+        with patch("api.server.firestore_client") as mock_fs:
+            mock_fs.get_video_status.return_value = mock_video_document
+            _wire_collection(
+                mock_fs,
+                docs_by_collection={
+                    "tracks_meta": [
+                        {"track_id": 7, "role": "referee", "role_confidence": 0.8},
+                        # track 14 has no tracks_meta row at all (older video,
+                        # predates role_classification_stage) - role must be
+                        # None, not a missing key or a crash.
+                    ],
+                },
+                where_docs_by_collection={
+                    "tracks": [
+                        {"frame_index": 42, "track_id": 7, "bbox": [10, 20, 30, 40]},
+                        {"frame_index": 42, "track_id": 14, "bbox": [50, 60, 70, 80]},
+                    ],
+                },
+            )
+
+            response = client.get("/api/tracks/dQw4w9WgXcQ/frame/42")
+
+            assert response.status_code == 200
+            boxes = {b["track_id"]: b["role"] for b in response.json()["boxes"]}
+            assert boxes == {7: "referee", 14: None}
+
+    @pytest.mark.endpoints
+    @pytest.mark.integration
     def test_get_frame_boxes_invalid_video_id(self, client):
         response = client.get("/api/tracks/***/frame/42")
 

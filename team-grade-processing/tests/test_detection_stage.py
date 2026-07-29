@@ -155,3 +155,98 @@ def test_run_detection_stage_no_frames_returns_error(tmp_path, monkeypatch):
 
     assert success is False
     assert error == "FRAMES_NOT_FOUND"
+
+
+def test_run_detection_stage_field_boundary_filter_drops_off_field_detections(tmp_path, monkeypatch):
+    # One real frame: a green "field" rectangle on a gray background, with
+    # one detection whose foot-point lands on the field and one whose
+    # foot-point lands in the gray background (crowd/sideline).
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+    import cv2
+    frame = np.full((400, 600, 3), (60, 60, 60), dtype=np.uint8)
+    cv2.rectangle(frame, (100, 100), (500, 350), (40, 180, 40), thickness=-1)
+    cv2.imwrite(str(frames_dir / "frame_000000.jpg"), frame)
+
+    monkeypatch.setattr(detection_stage.settings, "get_frames_dir", lambda video_id: frames_dir)
+    monkeypatch.setattr(detection_stage.settings, "FIELD_BOUNDARY_FILTER_ENABLED", True)
+    monkeypatch.setattr(detection_stage.settings, "FIELD_BOUNDARY_LINE_REFINEMENT_ENABLED", False)
+
+    fake_model = MagicMock()
+    fake_model.predict.return_value = [
+        FakeDetections(
+            # On-field: bbox bottom-center at (300, 300), well inside the
+            # green rectangle. Off-field: bbox bottom-center at (300, 20),
+            # in the gray background above the field.
+            xyxy=[[280, 250, 320, 300], [280, 0, 320, 20]],
+            confidence=[0.9, 0.9],
+            class_names=["person", "person"],
+        ),
+    ]
+
+    mock_firestore = MagicMock()
+    mock_firestore.db = MagicMock()
+    mock_queue = MagicMock()
+    mock_queue.enqueue_video.return_value = True
+
+    written_docs = {}
+
+    def fake_write_detections_batch(firestore_client, video_id, detections):
+        written_docs["detections"] = detections
+        return len(detections)
+
+    with patch.object(detection_stage, "get_detection_model", return_value=fake_model), \
+         patch.object(detection_stage, "write_detections_batch", side_effect=fake_write_detections_batch):
+        success, error = detection_stage.run_detection_stage(
+            mock_firestore, "dQw4w9WgXcQ", mock_queue
+        )
+
+    assert success is True
+    assert error is None
+
+    detections = written_docs["detections"]
+    assert len(detections) == 1
+    assert detections[0]["bbox"] == [280, 250, 320, 300]
+
+
+def test_run_detection_stage_field_boundary_filter_off_by_default(tmp_path, monkeypatch):
+    # Same scene as above, but the flag is left at its default (off) -
+    # both detections (on-field and off-field) must survive unfiltered.
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+    import cv2
+    frame = np.full((400, 600, 3), (60, 60, 60), dtype=np.uint8)
+    cv2.rectangle(frame, (100, 100), (500, 350), (40, 180, 40), thickness=-1)
+    cv2.imwrite(str(frames_dir / "frame_000000.jpg"), frame)
+
+    monkeypatch.setattr(detection_stage.settings, "get_frames_dir", lambda video_id: frames_dir)
+    assert detection_stage.settings.FIELD_BOUNDARY_FILTER_ENABLED is False
+
+    fake_model = MagicMock()
+    fake_model.predict.return_value = [
+        FakeDetections(
+            xyxy=[[280, 250, 320, 300], [280, 0, 320, 20]],
+            confidence=[0.9, 0.9],
+            class_names=["person", "person"],
+        ),
+    ]
+
+    mock_firestore = MagicMock()
+    mock_firestore.db = MagicMock()
+    mock_queue = MagicMock()
+    mock_queue.enqueue_video.return_value = True
+
+    written_docs = {}
+
+    def fake_write_detections_batch(firestore_client, video_id, detections):
+        written_docs["detections"] = detections
+        return len(detections)
+
+    with patch.object(detection_stage, "get_detection_model", return_value=fake_model), \
+         patch.object(detection_stage, "write_detections_batch", side_effect=fake_write_detections_batch):
+        success, error = detection_stage.run_detection_stage(
+            mock_firestore, "dQw4w9WgXcQ", mock_queue
+        )
+
+    assert success is True
+    assert len(written_docs["detections"]) == 2

@@ -1,16 +1,19 @@
 """
 Ingestion Pipeline Stages - Multi-stage Queue-Based Processing Pipeline
 
-This module implements the central dispatcher for the 9-stage video processing pipeline:
+This module implements the central dispatcher for the video processing pipeline
+(the base single-athlete path below; MULTI_PLAYER_TRACKING_ENABLED adds several
+more stages - see STAGE_SEQUENCE for the full, authoritative order):
 1. metadata - Initialize video document and stage tracking
 2. download - Download video from YouTube
 3. frame_extraction - Extract frames at 15 FPS
 4. pose - Detect pose keypoints using MediaPipe
 5. torso_crop - Crop torso regions from high-confidence frames
-6. jersey_ocr - Detect jersey number from torso crops
-7. rep_extraction - Segment plays/repetitions from pose trajectory
-8. biomechanics - Calculate trait scores per repetition
-9. complete - Finalize processing and cleanup
+6. role_classification - Classify each track as referee/player (multi-player only)
+7. jersey_ocr - Detect jersey number from torso crops
+8. rep_extraction - Segment plays/repetitions from pose trajectory
+9. biomechanics - Calculate trait scores per repetition
+10. complete - Finalize processing and cleanup
 
 Stages execute sequentially; each queue item progresses through all stages until completion.
 If a stage fails, exponential backoff retry is triggered (3 max retries, 0.1s → 0.3s → 0.9s).
@@ -39,6 +42,10 @@ from .tracking_stage import run_tracking_stage
 # Phase 3 Week 3: Lightweight pose model (2MB, 2x faster)
 from .pose_stage_lite import run_pose_stage_lite as run_pose_stage
 from .torso_crop_stage import run_torso_crop_stage
+# Detection-clutter follow-up: classifies each track's torso crop as
+# referee/player (classical CV, no roster fine-tuning) - ahead of jersey_ocr,
+# reading the same torso crops.
+from .role_classification_stage import run_role_classification_stage
 from .jersey_ocr_stage import run_jersey_ocr_stage
 from .rep_extraction_stage import run_rep_extraction_stage
 # Phase 3 Week 4: Vectorized biomechanics (NumPy matrix operations)
@@ -56,7 +63,7 @@ try:
     from config.constants import (
         STAGE_METADATA, STAGE_DOWNLOAD, STAGE_AUTHENTICITY_CHECK, STAGE_WHISTLE_DETECTION, STAGE_FRAME_EXTRACTION,
         STAGE_MOTION_COMPENSATION, STAGE_PLAY_DETECTION, STAGE_DETECTION, STAGE_TRACKING,
-        STAGE_POSE, STAGE_TORSO_CROP, STAGE_JERSEY_OCR,
+        STAGE_POSE, STAGE_TORSO_CROP, STAGE_ROLE_CLASSIFICATION, STAGE_JERSEY_OCR,
         STAGE_REP_EXTRACTION, STAGE_BIOMECHANICS, STAGE_COMPLETE
     )
     _import_from_config = True
@@ -75,6 +82,7 @@ except ImportError as e:
     STAGE_TRACKING = "tracking"
     STAGE_POSE = "pose"
     STAGE_TORSO_CROP = "torso_crop"
+    STAGE_ROLE_CLASSIFICATION = "role_classification"
     STAGE_JERSEY_OCR = "jersey_ocr"
     STAGE_REP_EXTRACTION = "rep_extraction"
     STAGE_BIOMECHANICS = "biomechanics"
@@ -86,7 +94,7 @@ def _validate_stage_constants():
     stages = [
         STAGE_METADATA, STAGE_DOWNLOAD, STAGE_AUTHENTICITY_CHECK, STAGE_WHISTLE_DETECTION, STAGE_FRAME_EXTRACTION,
         STAGE_MOTION_COMPENSATION, STAGE_PLAY_DETECTION, STAGE_DETECTION, STAGE_TRACKING,
-        STAGE_POSE, STAGE_TORSO_CROP, STAGE_JERSEY_OCR,
+        STAGE_POSE, STAGE_TORSO_CROP, STAGE_ROLE_CLASSIFICATION, STAGE_JERSEY_OCR,
         STAGE_REP_EXTRACTION, STAGE_BIOMECHANICS, STAGE_COMPLETE
     ]
     for stage in stages:
@@ -113,6 +121,7 @@ __all__ = [
     "run_tracking_stage",
     "run_pose_stage",
     "run_torso_crop_stage",
+    "run_role_classification_stage",
     "run_jersey_ocr_stage",
     "run_rep_extraction_stage",
     "run_biomechanics_stage",
@@ -129,6 +138,7 @@ __all__ = [
     "STAGE_TRACKING",
     "STAGE_POSE",
     "STAGE_TORSO_CROP",
+    "STAGE_ROLE_CLASSIFICATION",
     "STAGE_JERSEY_OCR",
     "STAGE_REP_EXTRACTION",
     "STAGE_BIOMECHANICS",
@@ -153,6 +163,7 @@ STAGE_HANDLERS = {
     STAGE_TRACKING: run_tracking_stage,
     STAGE_POSE: run_pose_stage,
     STAGE_TORSO_CROP: run_torso_crop_stage,
+    STAGE_ROLE_CLASSIFICATION: run_role_classification_stage,
     STAGE_JERSEY_OCR: run_jersey_ocr_stage,
     STAGE_REP_EXTRACTION: run_rep_extraction_stage,
     STAGE_BIOMECHANICS: run_biomechanics_stage,
@@ -187,6 +198,7 @@ STAGE_SEQUENCE = [
     STAGE_TRACKING,
     STAGE_POSE,
     STAGE_TORSO_CROP,
+    STAGE_ROLE_CLASSIFICATION,
     STAGE_JERSEY_OCR,
     STAGE_REP_EXTRACTION,
     STAGE_BIOMECHANICS,

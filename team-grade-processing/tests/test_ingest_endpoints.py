@@ -223,7 +223,7 @@ class TestVideoStatusEndpoint:
             assert data["video_id"] == "dQw4w9WgXcQ"
             assert "status" in data
             assert "stages" in data
-            assert data["progress"] == 13  # 2 of 15 real stages completed in the fixture (no plays yet)
+            assert data["progress"] == 12  # 2 of 16 real stages completed in the fixture (no plays yet)
 
     @pytest.mark.endpoints
     @pytest.mark.integration

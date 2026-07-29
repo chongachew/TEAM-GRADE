@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Stage name constants
 STAGE_NAME = "torso_crop"
-STAGE_NEXT = "jersey_ocr"
+STAGE_NEXT = "role_classification"
 
 
 def run_torso_crop_stage(

@@ -1456,8 +1456,27 @@ async def get_frame_boxes(video_id: str, frame_index: int) -> Dict[str, Any]:
             .collection(COLLECTION_TRACKS)
             .where("frame_index", "==", frame_index)
         )
+        # role (referee/player/uncertain, from role_classification_stage) is
+        # a per-track attribute, not per-frame - one small query per request
+        # to join it in, same cost class as the tracks stream above. NULL
+        # for tracks from before that stage existed - the frontend treats
+        # that the same as "player" (only a confident "referee" dims a box).
+        tracks_meta_ref = (
+            firestore_client.db.collection(settings.COLLECTION_VIDEOS)
+            .document(safe_video_id)
+            .collection(COLLECTION_TRACKS_META)
+        )
+        role_by_track = {
+            doc.to_dict().get("track_id"): doc.to_dict().get("role")
+            for doc in tracks_meta_ref.stream()
+        }
+
         boxes = [
-            {"track_id": d.to_dict().get("track_id"), "bbox": d.to_dict().get("bbox")}
+            {
+                "track_id": d.to_dict().get("track_id"),
+                "bbox": d.to_dict().get("bbox"),
+                "role": role_by_track.get(d.to_dict().get("track_id")),
+            }
             for d in tracks_ref.stream()
         ]
 

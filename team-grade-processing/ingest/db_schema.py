@@ -356,6 +356,11 @@ tracks_meta = Table(
     Column("jersey_number", String),
     Column("jersey_confidence", Float),
     Column("jersey_source_frame", Integer),
+    # Set by role_classification_stage.py (processing/uniform_classifier.py):
+    # "player" | "referee" | "uncertain", or NULL for tracks from before this
+    # stage existed. Directly parallel to jersey_number/jersey_confidence.
+    Column("role", String, nullable=True),
+    Column("role_confidence", Float, nullable=True),
     Column("first_frame", Integer),
     Column("last_frame", Integer),
     Column("total_frames_tracked", Integer),
