@@ -110,6 +110,46 @@ def test_run_tracking_stage_writes_expected_doc_shape(tmp_path, monkeypatch):
     assert kwargs["play_index"] is None
 
 
+def test_run_tracking_stage_clears_frame_range_before_writing(tmp_path, monkeypatch):
+    # Regression test for a real production bug (2026-07-29): same stale-row
+    # issue as detection_stage.py - write_tracks_batch upserts by
+    # (video_id, frame_index, track_id) and never deletes, and a re-run's
+    # track_ids don't even line up with a prior run's (fresh tracker per
+    # run). The fix is to clear the frame range being (re)processed first.
+    frames_dir = tmp_path / "frames"
+    _write_fake_frames(frames_dir, range(2))
+    monkeypatch.setattr(tracking_stage.settings, "get_frames_dir", lambda video_id: frames_dir)
+
+    det_docs = [
+        MagicMock(to_dict=lambda: {"frame_index": 0, "bbox": [0, 0, 10, 10], "confidence": 0.9}),
+        MagicMock(to_dict=lambda: {"frame_index": 1, "bbox": [1, 1, 11, 11], "confidence": 0.8}),
+    ]
+    mock_firestore = _mock_firestore(det_docs)
+    mock_queue = MagicMock()
+    mock_queue.enqueue_video.return_value = True
+
+    call_order = []
+
+    def fake_clear(*args, **kwargs):
+        call_order.append("clear")
+        return 4
+
+    def fake_write(*args, **kwargs):
+        call_order.append("write")
+        return 2
+
+    with patch.object(tracking_stage, "reset_tracker", return_value=FakeTracker()), \
+         patch.object(tracking_stage, "clear_tracks_for_frame_range", side_effect=fake_clear) as mock_clear, \
+         patch.object(tracking_stage, "write_tracks_batch", side_effect=fake_write), \
+         patch.object(tracking_stage, "upsert_track_meta"):
+        success, error = tracking_stage.run_tracking_stage(mock_firestore, "dQw4w9WgXcQ", mock_queue)
+
+    assert success is True, error
+    mock_clear.assert_called_once_with(mock_firestore, "dQw4w9WgXcQ", 0, 1)
+    # Clear must happen before write, not after.
+    assert call_order == ["clear", "write"]
+
+
 def test_run_tracking_stage_scopes_to_one_play(tmp_path, monkeypatch):
     # 6 frames on disk; queue item scoped to play_index=1 (frames 3-5).
     # Detections query is mocked to only return play 1's detections - the

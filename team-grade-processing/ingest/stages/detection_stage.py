@@ -19,7 +19,13 @@ from ingest.exceptions import (
     QueueError,
 )
 from ingest.validation import VideoIdValidator
-from ingest.utils.firestore_utils import get_utc_timestamp, write_detections_batch, get_play, update_stage_status
+from ingest.utils.firestore_utils import (
+    get_utc_timestamp,
+    write_detections_batch,
+    clear_detections_for_frame_range,
+    get_play,
+    update_stage_status,
+)
 from ingest.s3_client import ensure_frames_local
 from ingest.frame_range import list_frame_paths_by_index
 from processing.field_boundary import (
@@ -278,6 +284,24 @@ def run_detection_stage(
             return False, error_code
 
         try:
+            # Clear this run's frame range before writing - write_detections_batch
+            # upserts by (video_id, frame_index, detection_index), which can't
+            # by itself shrink a frame's detection count (e.g. the field-boundary
+            # filter now correctly finding 0 people on a frame that used to have
+            # several) - without this, the extra old rows never get overwritten
+            # and leak into the UI as stale boxes. Confirmed live 2026-07-29.
+            frame_index_lo = ordered_frames[0][0]
+            frame_index_hi = ordered_frames[-1][0]
+            cleared = clear_detections_for_frame_range(
+                firestore_client, video_id_safe, frame_index_lo, frame_index_hi
+            )
+            logger.info(f"[{STAGE_NAME}] Cleared stale detections before write", extra={
+                "video_id": video_id_safe,
+                "frame_index_lo": frame_index_lo,
+                "frame_index_hi": frame_index_hi,
+                "rows_cleared": cleared,
+            })
+
             written = write_detections_batch(firestore_client, video_id_safe, detections_out)
             logger.info(f"[{STAGE_NAME}] Wrote detections to Firestore", extra={
                 "video_id": video_id_safe,

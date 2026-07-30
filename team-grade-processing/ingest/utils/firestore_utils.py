@@ -629,6 +629,41 @@ def write_whistle_events_batch(
         return 0
 
 
+def clear_detections_for_frame_range(
+    firestore_client,
+    video_id: str,
+    frame_index_lo: int,
+    frame_index_hi: int,
+) -> int:
+    """Delete existing `detections` rows in [frame_index_lo, frame_index_hi]
+    (inclusive) for this video, before a fresh detection run writes its
+    results.
+
+    write_detections_batch() below upserts by (video_id, frame_index,
+    detection_index) - it has no way to know a frame that used to have,
+    say, 9 detections now correctly has 0 (e.g. the field-boundary filter
+    excluded all of them), so without this clear-first step those old rows
+    would never get overwritten and would leak into the UI as stale boxes
+    indefinitely. Confirmed live 2026-07-29: 26 of one play's 175 frames
+    were stuck in exactly this state after the field-boundary filter first
+    shipped, before this function existed.
+
+    Returns:
+        Number of rows deleted.
+    """
+    safe_id = settings.sanitize_id(video_id)
+    engine = firestore_client.engine
+    with engine.begin() as conn:
+        result = conn.execute(
+            detections_table.delete().where(
+                detections_table.c.video_id == safe_id,
+                detections_table.c.frame_index >= frame_index_lo,
+                detections_table.c.frame_index <= frame_index_hi,
+            )
+        )
+        return result.rowcount
+
+
 def write_detections_batch(
     firestore_client,
     video_id: str,
@@ -689,6 +724,36 @@ def write_detections_batch(
     except Exception as e:
         logger.error(f"[PG] Failed to write detections batch: {e}")
         return 0
+
+
+def clear_tracks_for_frame_range(
+    firestore_client,
+    video_id: str,
+    frame_index_lo: int,
+    frame_index_hi: int,
+) -> int:
+    """Delete existing `tracks` rows in [frame_index_lo, frame_index_hi]
+    (inclusive) for this video, before a fresh tracking run writes its
+    results - same stale-row problem as clear_detections_for_frame_range()
+    above, and just as real here: DensityAwareMemoryTracker.reset_tracker()
+    hands out fresh track_ids from 0 on every run, so a re-run's track_id
+    numbering doesn't even line up with a prior run's - old rows are pure
+    leftover clutter, never overwritten by the new run's upserts.
+
+    Returns:
+        Number of rows deleted.
+    """
+    safe_id = settings.sanitize_id(video_id)
+    engine = firestore_client.engine
+    with engine.begin() as conn:
+        result = conn.execute(
+            tracks_table.delete().where(
+                tracks_table.c.video_id == safe_id,
+                tracks_table.c.frame_index >= frame_index_lo,
+                tracks_table.c.frame_index <= frame_index_hi,
+            )
+        )
+        return result.rowcount
 
 
 def write_tracks_batch(

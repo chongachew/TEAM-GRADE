@@ -209,6 +209,56 @@ def test_run_detection_stage_field_boundary_filter_drops_off_field_detections(tm
     assert detections[0]["bbox"] == [280, 250, 320, 300]
 
 
+def test_run_detection_stage_clears_frame_range_before_writing(tmp_path, monkeypatch):
+    # Regression test for a real production bug (2026-07-29): a re-run that
+    # finds FEWER detections for a frame than a prior run did left the extra
+    # old rows stranded, since write_detections_batch only upserts by
+    # (video_id, frame_index, detection_index) and never deletes. The fix is
+    # to clear the frame range being (re)processed before writing.
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+    import cv2
+    for i in range(3):
+        cv2.imwrite(str(frames_dir / f"frame_{i:06d}.jpg"), np.zeros((10, 10, 3), dtype=np.uint8))
+
+    monkeypatch.setattr(detection_stage.settings, "get_frames_dir", lambda video_id: frames_dir)
+
+    fake_model = MagicMock()
+    fake_model.predict.return_value = [
+        FakeDetections(xyxy=[[10, 10, 50, 90]], confidence=[0.9], class_names=["person"])
+        for _ in range(3)
+    ]
+
+    mock_firestore = MagicMock()
+    mock_firestore.db = MagicMock()
+    mock_queue = MagicMock()
+    mock_queue.enqueue_video.return_value = True
+
+    call_order = []
+
+    def fake_clear(*args, **kwargs):
+        call_order.append("clear")
+        return 5
+
+    def fake_write(*args, **kwargs):
+        call_order.append("write")
+        return 3
+
+    with patch.object(detection_stage, "get_detection_model", return_value=fake_model), \
+         patch.object(detection_stage, "clear_detections_for_frame_range", side_effect=fake_clear) as mock_clear, \
+         patch.object(detection_stage, "write_detections_batch", side_effect=fake_write):
+        success, error = detection_stage.run_detection_stage(
+            mock_firestore, "dQw4w9WgXcQ", mock_queue
+        )
+
+    assert success is True, error
+
+    mock_clear.assert_called_once_with(mock_firestore, "dQw4w9WgXcQ", 0, 2)
+    # Clear must happen before write, not after - otherwise it would wipe
+    # out the very rows it was just supposed to protect.
+    assert call_order == ["clear", "write"]
+
+
 def test_run_detection_stage_field_boundary_filter_off_by_default(tmp_path, monkeypatch):
     # Same scene as above, but the flag is left at its default (off) -
     # both detections (on-field and off-field) must survive unfiltered.

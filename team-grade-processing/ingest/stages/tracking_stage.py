@@ -23,6 +23,7 @@ from ingest.validation import VideoIdValidator
 from ingest.utils.firestore_utils import (
     get_utc_timestamp,
     write_tracks_batch,
+    clear_tracks_for_frame_range,
     upsert_track_meta,
     write_jersey_number_for_track,
     get_play,
@@ -259,6 +260,23 @@ def run_tracking_stage(
             return False, error_code
 
         try:
+            # Clear this run's frame range before writing - same stale-row
+            # problem as detection_stage.py's write path, and just as real
+            # here: DensityAwareMemoryTracker hands out fresh track_ids from
+            # 0 on every run, so without this a re-run's old rows are pure
+            # leftover clutter, never overwritten. Confirmed live 2026-07-29.
+            frame_index_lo = ordered_frames[0][0]
+            frame_index_hi = ordered_frames[-1][0]
+            cleared = clear_tracks_for_frame_range(
+                firestore_client, video_id_safe, frame_index_lo, frame_index_hi
+            )
+            logger.info(f"[{STAGE_NAME}] Cleared stale tracks before write", extra={
+                "video_id": video_id_safe,
+                "frame_index_lo": frame_index_lo,
+                "frame_index_hi": frame_index_hi,
+                "rows_cleared": cleared,
+            })
+
             written = write_tracks_batch(firestore_client, video_id_safe, track_docs)
             logger.info(f"[{STAGE_NAME}] Wrote track docs to Firestore", extra={
                 "video_id": video_id_safe,
