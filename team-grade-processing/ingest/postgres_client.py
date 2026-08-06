@@ -31,7 +31,7 @@ import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 
-from sqlalchemy import create_engine, select, update as sa_update, delete as sa_delete, func, text
+from sqlalchemy import create_engine, event, select, update as sa_update, delete as sa_delete, func, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.pool import QueuePool
 
@@ -110,7 +110,39 @@ def make_engine(database_url: Optional[str] = None):
             "DATABASE_URL is not set. Set the DATABASE_URL environment variable "
             "(postgresql://user:pass@host:port/dbname) or pass database_url= explicitly."
         )
-    return create_engine(normalize_database_url(url), poolclass=QueuePool, pool_pre_ping=True, future=True)
+    engine = create_engine(normalize_database_url(url), poolclass=QueuePool, pool_pre_ping=True, future=True)
+
+    @event.listens_for(engine, "connect")
+    def _force_custom_plan(dbapi_connection, connection_record):
+        # upsert_row_coalesce_keys' ON CONFLICT target uses a bound
+        # parameter inside COALESCE (coalesce(track_id, %(coalesce_1)s))
+        # to match reps'/rep_analysis' expression unique indexes. Postgres
+        # only re-plans a given prepared statement shape from scratch
+        # ("custom plan") for its first ~5 executions on a connection; after
+        # that it switches to a cached "generic plan" for that shape - and
+        # generic plans cannot infer a match against an expression index
+        # through a bound parameter, so every write after the 5th on the
+        # same pooled connection fails with psycopg.errors.
+        # InvalidColumnReference ("no unique or exclusion constraint
+        # matching the ON CONFLICT specification"). Confirmed live
+        # 2026-08-06: reps rows 0-9 in a batch wrote fine, row 10 (6th
+        # write of that exact statement shape on the connection) failed
+        # every time, and forcing custom plans made all 29 succeed. Only
+        # upsert_row_coalesce_keys (reps/rep_analysis) is affected -
+        # video_stages_conflict_target/tracks_meta_conflict_target below use
+        # partial indexes with plain-column conflict targets instead of a
+        # COALESCE expression, so they don't hit this.
+        with dbapi_connection.cursor() as cur:
+            cur.execute("SET plan_cache_mode = force_custom_plan")
+        # psycopg3 connections default to autocommit=False - without this,
+        # the SET runs inside an implicit transaction that SQLAlchemy's own
+        # first BEGIN/ROLLBACK on this connection discards before any real
+        # query ever sees it (confirmed live: SHOW plan_cache_mode read
+        # back "auto" - the SET had silently no-op'd - until this commit
+        # was added).
+        dbapi_connection.commit()
+
+    return engine
 
 
 def video_stages_conflict_target(play_index: Optional[int] = None):
